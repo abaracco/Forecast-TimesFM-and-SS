@@ -1,0 +1,47 @@
+# ─── File Excel (binari, non versionabili riga per riga) ───────────────────
+*.xlsx
+*.xlsm
+*.xlsb
+*.xls
+*.xltx
+*.xltm
+
+# ─── File temporanei Excel / Office ────────────────────────────────────────
+~$*.xlsx
+~$*.xlsm
+~$*.xls
+~$*.docx
+~$*.pptx
+*.tmp
+
+# ─── File di sistema Windows ────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─── File di sistema macOS (se mai usi anche Mac) ──────────────────────────
+.DS_Store
+.AppleDouble
+
+# ─── VS Code (impostazioni locali, non utili su altri PC) ──────────────────
+.vscode/settings.json
+.vscode/launch.json
+# Tieni invece .vscode/extensions.json se vuoi condividere i plugin consigliati
+
+# ─── Python (se hai script .py nel progetto) ───────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+.venv/
+
+# ─── Log e file di debug ───────────────────────────────────────────────────
+*.log
+*.bak
+*.swp
+
+# ─── Dati sensibili — adatta i nomi ai tuoi file reali ─────────────────────
+secrets.json
+config_local.ini
+# api_keys.txt   ← decommentare se esiste
