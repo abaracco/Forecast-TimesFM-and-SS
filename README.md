@@ -32,7 +32,7 @@ Il notebook è organizzato in celle raggruppate per modulo funzionale:
 | **D** | Calibrazione stagionale | Calcolo fattori di aggiustamento (Theil-Sen log-lineare) per mesi critici (es. agosto, dicembre) |
 | **E** | Arrotondamento | Arrotondamento al multiplo d'imballo (`"up"` / `"down"` / `"nearest"`) |
 | **F** | Modello TimesFM | Caricamento manuale del modello, auto-detection GPU/CPU, smoke test, inferenza batch |
-| **G** | Backtest | Grid search dello scaling factor ottimale per ogni SKU, senza data leakage |
+| **G** | Backtest | Rolling-origin grid search (grossolano + fine) dello scaling factor ottimale, con shrinkage opzionale, senza data leakage |
 | **H** | Forecast futuro | Generazione previsioni con scaling + calibrazione stagionale + arrotondamento |
 | **I** | Inventario | Classificazione ABC (Pareto) e XYZ (CV), calcolo scorta di sicurezza |
 | **J** | Export | Costruzione tabella finale e download del file Excel |
@@ -73,16 +73,51 @@ Fattore_mese = exp(mediana dei residui nei mesi target)
 TimesFM genera previsioni calibrate su quantili. Per trovare il quantile (e quindi il **fattore di scala**) ottimale per ogni SKU, il notebook esegue un backtest senza data leakage:
 
 ```
-Storico completo  →  Troncato (−12 mesi)  +  Valori reali (ultimi 12 mesi)
-                         ↓ TimesFM
-                    Forecast × scaling_factor × fattore_stagionale → arrotondamento
-                         ↓
-                    Accuratezza Motul pesata per volume
+Per ogni origine di backtest (rolling-origin):
+  Storico completo  →  Troncato (−12−shift mesi)  +  Valori reali (12 mesi)
+                           ↓ TimesFM
+                      Forecast × scaling_factor × fattore_stagionale → arrotondamento
+                           ↓
+                      Accuratezza Motul pesata per volume
+
+Poi cross-origin:
+  Per ogni q nella griglia → media accuratezza su tutte le origini
+  Miglior q grossolano → raffinamento fine (step 0.01)
+  Shrinkage opzionale → miscela con mediana globale
 ```
 
-- **Griglia di ricerca**: scaling factor da 0.10 a 0.90 (passo 0.05, 17 punti)
-- Per ogni SKU viene scelto il fattore che **massimizza l'accuratezza Motul pesata**
+Il backtest include tre meccanismi di ottimizzazione:
+
+#### a) Rolling-origin (`N_BACKTEST_ORIGINS`)
+
+Invece di un singolo split sugli ultimi 12 mesi, il backtest valuta più finestre temporali, ognuna spostata indietro di 6 mesi. L'accuratezza per ogni scaling factor viene mediata su tutte le origini, producendo una stima più robusta e meno sensibile a periodi atipici (es. promozioni, stockout).
+
+- `N_BACKTEST_ORIGINS = 1`: comportamento originale (singolo split)
+- `N_BACKTEST_ORIGINS = 2` (default): due origini (ultimi 12 mesi + mesi da −18 a −6)
+- SKU con storico insufficiente per le origini aggiuntive usano solo quelle disponibili
+
+#### b) Griglia fine (sempre attiva)
+
+Dopo il grid search grossolano (step 0.05, 17 punti), un secondo passaggio esplora 9 punti aggiuntivi con step 0.01 nel range `[best_q − 0.04, best_q + 0.04]`. Questo non può mai peggiorare il risultato (può solo trovare un q uguale o migliore sugli stessi dati).
+
+#### c) Shrinkage (`SHRINKAGE_ENABLED`)
+
+Per gli SKU con poco storico, lo scaling factor ottimale può essere instabile. Lo shrinkage miscela il q per-SKU con la mediana globale di tutti gli SKU:
+
+```
+q_finale = α × q_sku + (1 − α) × q_globale
+α = min(1, mesi_storico / 36)
+```
+
+- SKU con 36+ mesi di storico → `α = 1` (nessun effetto)
+- SKU con 12 mesi → `α = 0.33` (forte regolarizzazione verso la media)
+- `SHRINKAGE_ENABLED = False`: disattiva completamente lo shrinkage
+
+#### Garanzie invariate
+
 - Tutta la calibrazione stagionale nel backtest usa **solo lo storico troncato** (no leakage)
+- Per ogni SKU viene scelto il fattore che **massimizza l'accuratezza Motul pesata**
+- `df_backtest_results` mantiene la stessa struttura (SKU, BestQuantile, BestAccuracy, TotalWeight)
 
 ---
 
@@ -226,7 +261,9 @@ Il nome del file include automaticamente data e ora di estrazione: `Forecast and
 | `OUTLIER_LEVEL` | `0.05` | Percentile di taglio (5° / 95°) |
 | `CALIBRATION_MONTHS` | `[8, 12]` | Mesi con aggiustamento stagionale; `[]` per disattivare |
 | `TRIM_LEADING_ZEROS` | `True` | Rimuove zeri iniziali (pre-lancio) |
-| `QUANTILE_GRID` | `0.10–0.90` | Griglia di ricerca dello scaling factor |
+| `QUANTILE_GRID` | `0.10–0.90` | Griglia grossolana di ricerca dello scaling factor (la griglia fine step 0.01 è automatica) |
+| `N_BACKTEST_ORIGINS` | `2` | Origini di backtest (`1` = singolo split, `2`+ = rolling-origin con shift di 6 mesi) |
+| `SHRINKAGE_ENABLED` | `True` | Shrinkage dello scaling factor verso mediana globale (disattivabile con `False`) |
 | `ROUNDING_MODE` | `"nearest"` | Modalità arrotondamento forecast (`"up"` / `"down"` / `"nearest"`) |
 | `DEFAULT_LEAD_TIME` | `30` | Lead time di default in giorni |
 | `REORDER_PERIOD` | `30` | Periodo di riordino in giorni |
@@ -258,6 +295,9 @@ Le dipendenze vengono installate automaticamente dal **Modulo F** (`!pip install
 - **Nessun data leakage**: nel backtest, la calibrazione stagionale usa esclusivamente lo storico troncato, senza mai "vedere" i valori che si vuole prevedere.
 - **Theil-Sen canonica unica**: la funzione `theil_sen_log_trend()` è definita una sola volta nel Modulo D e riutilizzata identicamente nel Modulo G, garantendo coerenza tra calibrazione e backtest.
 - **Scaling factor ≠ quantile TimesFM**: la griglia `QUANTILE_GRID` non sfrutta l'output quantilico nativo di TimesFM (ottimizzato per pinball loss), ma viene usata come moltiplicatore della previsione mediana per massimizzare la metrica Motul.
+- **Rolling-origin backtest**: più origini temporali (con shift di 6 mesi) riducono la varianza della stima dello scaling factor ottimale, rendendola più robusta a periodi atipici. La media delle accuratezze su più finestre è un'approssimazione di cross-validation per serie temporali.
+- **Griglia a due passaggi**: il primo passaggio (step 0.05) identifica rapidamente la regione ottimale; il secondo (step 0.01) la affina. Il raffinamento non può mai peggiorare il risultato, solo migliorarlo.
+- **Shrinkage dello scaling factor**: per SKU con storico limitato, miscela il q ottimale per-SKU con la mediana globale. Questo è un tradeoff bias-varianza classico (simile a un estimatore empirico di Bayes) che migliora la stabilità delle previsioni fuori campione.
 - **Scorta di sicurezza sempre arrotondata per eccesso**: indipendentemente dal `ROUNDING_MODE` impostato per i forecast, la scorta di sicurezza usa sempre `"up"` per garantire copertura.
 - **Guardia ABC**: se il volume totale nel periodo di lookback è zero, tutti gli SKU vengono classificati come classe C per evitare divisioni per zero.
 - **Inferenza batch con fallback automatico**: il modello tenta prima un forecast batch (tutti gli SKU in una chiamata). Se fallisce (es. per limiti di memoria), ricade automaticamente su forecast singoli per SKU.
