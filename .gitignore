@@ -36,6 +36,7 @@ __pycache__/
 venv/
 .venv/
 Forecast_TimesFM_and_SS/
+timesfm/
 
 # ─── Log e file di debug ───────────────────────────────────────────────────
 *.log
