@@ -18,7 +18,7 @@ There is no traditional build system. The notebook supports two execution modes 
 5. Output: Excel file exported via `google.colab.files.download()`
 
 **Local execution (`COLAB = False`):**
-1. Dependencies must be pre-installed: `pip install pandas numpy openpyxl xlsxwriter einops huggingface_hub torch timesfm`
+1. Dependencies must be pre-installed via `pip install -r requirements.txt` (CPU) or `pip install -r requirements-nvidia.txt` (NVIDIA GPU)
 2. TimesFM repo is auto-cloned to `./timesfm/` if not already present
 3. HuggingFace model uses default cache (`~/.cache/huggingface`) with automatic ETag-based update checks
 4. Input: Excel file selected via `tkinter.filedialog` (works in classic Jupyter Notebook; may require manual path in JupyterLab/VS Code)

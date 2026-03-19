@@ -10,7 +10,10 @@
       "Bash(nvidia-smi:*)",
       "Bash(/c/Users/andre/anaconda3/python.exe --version)",
       "Bash(tasklist:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(findstr /i \"python jupyter\")",
+      "Bash(cmd.exe /c \"taskkill /PID 16784 /F\")",
+      "Bash(powershell.exe -Command \"Stop-Process -Id 16784 -Force\")"
     ]
   }
 }
