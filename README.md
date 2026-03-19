@@ -16,7 +16,7 @@ Questo progetto integra in un unico notebook Jupyter (eseguibile su **Google Col
 1. **Previsione della domanda** — usando il modello deep learning [TimesFM-2.5-200M](https://huggingface.co/google/timesfm-2.5-200m-pytorch) di Google, ottimizzato tramite backtest per ogni singolo SKU.
 2. **Pianificazione delle scorte di sicurezza** — tramite classificazione ABC/XYZ e formula statistica standard, con livelli di servizio differenziati per classe di prodotto.
 
-Il risultato è un file Excel completo con storico, previsioni future (fino a 25 mesi) e metriche di inventario, pronto per essere usato nei processi S&OP e di acquisto.
+Il risultato è un file Excel completo con storico, previsioni future e metriche di inventario, pronto per essere usato nei processi S&OP e di acquisto.
 
 ---
 
