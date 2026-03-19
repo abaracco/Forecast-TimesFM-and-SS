@@ -4,17 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a demand forecasting and safety stock planning system implemented as a single Jupyter notebook (`Forecast_TimesFM_and_SS.ipynb`) designed to run in **Google Colab**. It combines Google's TimesFM-2.5-200M deep learning model with classical inventory optimization (ABC/XYZ classification and safety stock calculations).
+This is a demand forecasting and safety stock planning system implemented as a single Jupyter notebook (`Forecast_TimesFM_and_SS.ipynb`) designed to run in **Google Colab** or **locally** on any machine with Python 3.10+. The execution mode is controlled by the `COLAB` variable in Module A. It combines Google's TimesFM-2.5-200M deep learning model with classical inventory optimization (ABC/XYZ classification and safety stock calculations).
 
 ## Running the Notebook
 
-There is no traditional build system. The notebook is executed sequentially in Google Colab:
+There is no traditional build system. The notebook supports two execution modes controlled by `COLAB` in Module A:
 
+**Google Colab (`COLAB = True`, default):**
 1. Upload the notebook to Colab and run cells top-to-bottom
 2. Cell 15 installs dependencies via inline `!pip install` commands (TimesFM, torch, einops, huggingface_hub)
 3. TimesFM model is auto-downloaded from HuggingFace (`google/timesfm-2.5-200m-pytorch`)
 4. Input: Excel file uploaded via `google.colab.files.upload()`
-5. Output: `Forecast and SS v0.xlsx` exported via `google.colab.files.download()`
+5. Output: Excel file exported via `google.colab.files.download()`
+
+**Local execution (`COLAB = False`):**
+1. Dependencies must be pre-installed: `pip install pandas numpy openpyxl xlsxwriter einops huggingface_hub torch timesfm`
+2. TimesFM repo is auto-cloned to `./timesfm/` if not already present
+3. HuggingFace model uses default cache (`~/.cache/huggingface`) with automatic ETag-based update checks
+4. Input: Excel file selected via `tkinter.filedialog` (works in classic Jupyter Notebook; may require manual path in JupyterLab/VS Code)
+5. Output: saved to `./output/` directory, or user-chosen path if `ASK_SAVE_PATH = True`
 
 ## Architecture: 10 Functional Modules (A–J)
 
@@ -35,6 +43,8 @@ All code lives in a single notebook with cells organized into labeled modules:
 
 | Parameter | Default | Purpose |
 |---|---|---|
+| `COLAB` | True | Execution mode: `True` = Google Colab, `False` = local execution |
+| `ASK_SAVE_PATH` | False | Local mode only: `True` = open save dialog for output file, `False` = save to `./output/` |
 | `HORIZON` | 25 | Months to forecast |
 | `HORIZON_BACKTEST` | 12 | Backtest evaluation window |
 | `MIN_HISTORY_POINTS` | 6 | Minimum historical months per SKU |

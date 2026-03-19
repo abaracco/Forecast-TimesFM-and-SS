@@ -35,6 +35,7 @@ __pycache__/
 .env
 venv/
 .venv/
+Forecast_TimesFM_and_SS/
 
 # ─── Log e file di debug ───────────────────────────────────────────────────
 *.log

@@ -1,0 +1,18 @@
+# Dipendenze per esecuzione locale - versione CPU (senza GPU)
+# Installa con: pip install -r requirements.txt
+#
+# Per aggiornare PyTorch: cerca la versione su https://pytorch.org/get-started/locally/
+# e aggiorna la riga torch qui sotto.
+
+pandas
+numpy
+scipy
+openpyxl
+einops
+safetensors
+huggingface_hub
+jupyter
+
+# PyTorch CPU-only (versione pinnata per evitare che pip scarichi la versione GPU)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.6.0+cpu

@@ -11,7 +11,7 @@
 
 ## 🎯 Scopo del Progetto
 
-Questo progetto integra in un unico notebook Jupyter (eseguibile su **Google Colab**) due ambiti della supply chain planning:
+Questo progetto integra in un unico notebook Jupyter (eseguibile su **Google Colab** o **in locale** sul proprio PC) due ambiti della supply chain planning:
 
 1. **Previsione della domanda** — usando il modello deep learning [TimesFM-2.5-200M](https://huggingface.co/google/timesfm-2.5-200m-pytorch) di Google, ottimizzato tramite backtest per ogni singolo SKU.
 2. **Pianificazione delle scorte di sicurezza** — tramite classificazione ABC/XYZ e formula statistica standard, con livelli di servizio differenziati per classe di prodotto.
@@ -219,15 +219,26 @@ Il nome del file include automaticamente data e ora di estrazione: `Forecast and
 
 ---
 
-## 🚀 Come Usare il Notebook su Google Colab
+## 🚀 Come Iniziare
 
-### Prerequisiti
+Il notebook supporta **due modalità di esecuzione**, controllate dalla variabile `COLAB` nel Modulo A:
+
+| Modalità | `COLAB` | Input | Output |
+|----------|---------|-------|--------|
+| **Google Colab** (default) | `True` | Upload tramite popup del browser | Download automatico nel browser |
+| **Locale** (PC) | `False` | Finestra di dialogo del sistema operativo | Salvato in `./output/` (o percorso a scelta se `ASK_SAVE_PATH = True`) |
+
+---
+
+### 🌐 Esecuzione su Google Colab
+
+#### Prerequisiti
 
 - Account Google (per Google Colab e Google Drive)
 - File Excel di input nel formato descritto sopra
 - Connessione internet (per il download del modello da HuggingFace, ~800 MB)
 
-### Passaggi
+#### Passaggi
 
 1. **Apri il notebook su Google Colab**
    - Vai su [colab.research.google.com](https://colab.research.google.com/)
@@ -250,10 +261,54 @@ Il nome del file include automaticamente data e ora di estrazione: `Forecast and
 
 ---
 
+### 💻 Guida all'Installazione in Locale
+
+Per eseguire il notebook sul proprio PC senza Google Colab, seguire questi passaggi:
+
+1. **Installare Python** — Scaricare Python 3.10 o superiore da [python.org](https://www.python.org/). Su Windows, ricordare di spuntare **"Add Python to PATH"** durante l'installazione.
+
+2. **Scaricare il repository** — Clonare il repo con `git clone <url-repo>` oppure scaricare lo ZIP da GitHub ed estrarlo.
+
+3. **Creare un ambiente virtuale** *(raccomandato)* — Dalla cartella del progetto, aprire il terminale (o Prompt dei comandi su Windows) e lanciare:
+   ```bash
+   python -m venv Forecast_TimesFM_and_SS
+   ```
+   Poi attivarlo:
+   - **Windows**: `Forecast_TimesFM_and_SS\Scripts\activate`
+   - **macOS/Linux**: `source Forecast_TimesFM_and_SS/bin/activate`
+
+4. **Installare le dipendenze** — Con l'ambiente attivato, scegliere il file adatto alla propria configurazione:
+
+   | File | Quando usarlo |
+   |------|---------------|
+   | `requirements-nvidia.txt` | PC con scheda grafica **NVIDIA** e driver CUDA installati (consigliato, molto più veloce) |
+   | `requirements.txt` | Tutti gli altri PC (solo CPU, più lento ma funzionante) |
+
+   Lanciare **uno** dei due comandi:
+   ```bash
+   # Con GPU NVIDIA:
+   pip install -r requirements-nvidia.txt
+
+   # Senza GPU (solo CPU):
+   pip install -r requirements.txt
+   ```
+
+   > **Nota CUDA**: il file `requirements-nvidia.txt` è configurato per CUDA 12.4. Se hai una versione diversa di CUDA, apri il file e cambia `cu124` con la tua versione (es. `cu121` per CUDA 12.1, `cu118` per CUDA 11.8). Per verificare la tua versione: `nvidia-smi` da terminale.
+
+5. **Configurare il notebook** — Aprire il notebook, andare nel Modulo A e impostare `COLAB = False`.
+
+6. **Eseguire** — Lanciare `jupyter notebook` dal terminale, aprire il file `.ipynb` e eseguire tutte le celle in ordine (`Cell → Run All`).
+
+> **Nota**: la finestra di selezione file (tkinter) funziona con Jupyter Notebook classico. In JupyterLab o VS Code potrebbe non apparire correttamente — in tal caso, assegnare manualmente il percorso del file alla variabile `INPUT_FILE` nella cella B.1.
+
+---
+
 ## 🔧 Principali Parametri di Configurazione (Modulo A)
 
 | Parametro | Default | Descrizione |
 |-----------|---------|-------------|
+| `COLAB` | `True` | Modalità di esecuzione: `True` = Google Colab, `False` = locale |
+| `ASK_SAVE_PATH` | `False` | Solo in locale: `True` = apre finestra di dialogo per scegliere dove salvare l'output |
 | `HORIZON` | `25` | Mesi da prevedere |
 | `HORIZON_BACKTEST` | `12` | Finestra di backtest per ottimizzazione |
 | `MIN_HISTORY_POINTS` | `6` | Minimo mesi di storico per SKU |
@@ -274,7 +329,7 @@ Il nome del file include automaticamente data e ora di estrazione: `Forecast and
 
 ## 🧰 Dipendenze
 
-Le dipendenze vengono installate automaticamente dal **Modulo F** (`!pip install`):
+Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo F. In **locale**, usare i file `requirements.txt` (CPU) o `requirements-nvidia.txt` (GPU NVIDIA) forniti nel repository — vedi la [guida all'installazione](#-guida-allinstallazione-in-locale).
 
 | Libreria | Utilizzo |
 |----------|----------|

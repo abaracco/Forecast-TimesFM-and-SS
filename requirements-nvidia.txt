@@ -1,0 +1,21 @@
+# Dipendenze per esecuzione locale - versione NVIDIA GPU (CUDA 12.4)
+# Installa con: pip install -r requirements-nvidia.txt
+#
+# Se hai una versione diversa di CUDA, cambia cu124 con cu121 o cu118
+# sia nell'URL che nel suffisso di torch (es. torch==2.6.0+cu121)
+#
+# Per aggiornare PyTorch: cerca la versione su https://pytorch.org/get-started/locally/
+# e aggiorna la riga torch qui sotto.
+
+pandas
+numpy
+scipy
+openpyxl
+einops
+safetensors
+huggingface_hub
+jupyter
+
+# PyTorch con supporto CUDA 12.4 (versione pinnata per evitare che pip scarichi la versione CPU da PyPI)
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0+cu124

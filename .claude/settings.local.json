@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(cd:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(where python:*)",
+      "Read(//c/Users/andre/AppData/Local/Programs/**)",
+      "Bash(ls /c/Python*/python.exe)",
+      "Read(//c/Users/andre/**)",
+      "Bash(nvidia-smi:*)",
+      "Bash(/c/Users/andre/anaconda3/python.exe --version)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)"
     ]
   }
 }
