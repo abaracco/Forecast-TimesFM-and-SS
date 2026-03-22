@@ -303,27 +303,58 @@ Per eseguire il notebook sul proprio PC senza Google Colab, seguire questi passa
 
 ---
 
-## 🔧 Principali Parametri di Configurazione (Modulo A)
+## 🔧 Configurazione (Modulo A)
+
+Tutti i parametri si trovano nella **prima cella** del notebook (Modulo A). Sono organizzati in sezioni con commenti dettagliati. Di seguito il riepilogo.
+
+### Toggle ON/OFF — Funzionalità matematiche
+
+Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tutte le impostazioni si applicano in modo coerente sia al backtest che al forecast futuro.
+
+| Variabile | Default | `True` / Attivo | `False` / Disattivo |
+|-----------|---------|-----------------|---------------------|
+| `REMOVE_OUTLIERS` | `True` | Taglia i valori estremi (winsorizing al 5°/95° percentile) per ridurre l'impatto degli outlier | Mantiene tutti i valori originali senza filtro |
+| `TRIM_LEADING_ZEROS` | `True` | Rimuove gli zeri in testa alla serie (periodo pre-lancio). Zeri interni e finali sono sempre mantenuti | Mantiene gli zeri iniziali come parte dello storico |
+| `CALIBRATION_MONTHS` | `[8, 12]` | Applica un aggiustamento stagionale (Theil-Sen) ai mesi indicati (es. 8=agosto, 12=dicembre) | Impostare `[]` (lista vuota) per disattivare la calibrazione |
+| `SHRINKAGE_ENABLED` | `True` | Miscela lo scaling factor di ogni SKU con la mediana globale; utile per SKU con poco storico (< 36 mesi) | Usa lo scaling factor ottimale per-SKU senza correzione |
+| `ROUNDING_MODE` | `"nearest"` | `"nearest"` = arrotonda al multiplo d'imballo più vicino · `"up"` = per eccesso · `"down"` = per difetto | — |
+| `CALCULATE_SS` | `True` | Calcola classificazione ABC/XYZ e scorta di sicurezza | Salta il calcolo; le colonne ABC, XYZ, SafetyStock non compaiono nel file di output |
+
+> **Nota:** la scorta di sicurezza è **sempre** arrotondata per eccesso al multiplo d'imballo, indipendentemente dal `ROUNDING_MODE` impostato per i forecast.
+
+### Modalità di esecuzione
 
 | Parametro | Default | Descrizione |
 |-----------|---------|-------------|
-| `COLAB` | `True` | Modalità di esecuzione: `True` = Google Colab, `False` = locale |
-| `ASK_SAVE_PATH` | `False` | Solo in locale: `True` = apre finestra di dialogo per scegliere dove salvare l'output |
-| `HORIZON` | `25` | Mesi da prevedere |
-| `HORIZON_BACKTEST` | `12` | Finestra di backtest per ottimizzazione |
-| `MIN_HISTORY_POINTS` | `6` | Minimo mesi di storico per SKU |
-| `REMOVE_OUTLIERS` | `True` | Abilita winsorizing |
-| `OUTLIER_LEVEL` | `0.05` | Percentile di taglio (5° / 95°) |
-| `CALIBRATION_MONTHS` | `[8, 12]` | Mesi con aggiustamento stagionale; `[]` per disattivare |
-| `TRIM_LEADING_ZEROS` | `True` | Rimuove zeri iniziali (pre-lancio) |
-| `QUANTILE_GRID` | `0.10–0.90` | Griglia grossolana di ricerca dello scaling factor (la griglia fine step 0.01 è automatica) |
+| `COLAB` | `True` | `True` = Google Colab (installa dipendenze automaticamente, upload/download file) · `False` = esecuzione in locale |
+| `ASK_SAVE_PATH` | `False` | Solo in locale: `True` = apre finestra di dialogo per scegliere dove salvare · `False` = salva in `./output/` |
+
+### Parametri numerici
+
+| Parametro | Default | Descrizione |
+|-----------|---------|-------------|
+| `HORIZON` | `25` | Mesi da prevedere nel forecast futuro |
+| `HORIZON_BACKTEST` | `12` | Mesi della finestra di valutazione nel backtest |
+| `MIN_HISTORY_POINTS` | `6` | Minimo mesi di storico richiesti per includere uno SKU |
 | `N_BACKTEST_ORIGINS` | `2` | Origini di backtest (`1` = singolo split, `2`+ = rolling-origin con shift di 6 mesi) |
-| `SHRINKAGE_ENABLED` | `True` | Shrinkage dello scaling factor verso mediana globale (disattivabile con `False`) |
-| `ROUNDING_MODE` | `"nearest"` | Modalità arrotondamento forecast (`"up"` / `"down"` / `"nearest"`) |
-| `DEFAULT_LEAD_TIME` | `30` | Lead time di default in giorni |
-| `REORDER_PERIOD` | `30` | Periodo di riordino in giorni |
-| `SS_LOOKBACK_MONTHS` | `12` | Mesi di storico per calcolo σ nella scorta di sicurezza |
-| `CALCULATE_SS` | `True` | Abilita calcolo scorta di sicurezza |
+| `QUANTILE_GRID` | `0.10–0.90` | Griglia grossolana di ricerca dello scaling factor (step 0.05); la griglia fine (step 0.01) è automatica |
+| `OUTLIER_LEVEL` | `0.05` | Percentile di taglio per il winsorizing (0.05 = 5°/95°) |
+| `ROUND_DECIMALS` | `3` | Decimali nel risultato finale dopo arrotondamento |
+| `DEFAULT_LEAD_TIME` | `30` | Lead time di default in giorni (usato se la colonna `LT` manca nel file) |
+| `REORDER_PERIOD` | `30` | Periodo di riordino in giorni (fisso a 1 mese) |
+| `SS_LOOKBACK_MONTHS` | `12` | Mesi di storico usati per calcolare la deviazione standard nella scorta di sicurezza |
+
+### Mappatura colonne Excel
+
+Se il file di input ha nomi di colonna diversi, modificare questi valori:
+
+| Variabile | Default | Colonna Excel |
+|-----------|---------|---------------|
+| `ID_COL` | `"SKU"` | Codice prodotto (chiave univoca) |
+| `DESC_COL` | `"Description"` | Descrizione prodotto |
+| `LT_COL_NAME` | `"LT"` | Lead time in giorni |
+| `PACK_SIZE_COL` | `"Round"` | Multiplo d'imballo |
+| `UOM_COL` | `"BUn"` | Unità di misura |
 
 ---
 
