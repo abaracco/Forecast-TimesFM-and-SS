@@ -1,4 +1,4 @@
-# 📦 Forecast & Safety Stock con TimesFM
+# 📦 Forecast TimesFM and SS 1.4.3
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
@@ -387,6 +387,22 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 - **Scorta di sicurezza sempre arrotondata per eccesso**: indipendentemente dal `ROUNDING_MODE` impostato per i forecast, la scorta di sicurezza usa sempre `"up"` per garantire copertura.
 - **Guardia ABC**: se il volume totale nel periodo di lookback è zero, tutti gli SKU vengono classificati come classe C per evitare divisioni per zero.
 - **Inferenza batch con fallback automatico**: il modello tenta prima un forecast batch (tutti gli SKU in una chiamata). Se fallisce (es. per limiti di memoria), ricade automaticamente su forecast singoli per SKU.
+
+---
+
+## 🏷️ Storia delle versioni
+
+| Tag | Sintesi |
+|---|---|
+| **v1.0** | Prima versione eseguibile su Google Colab (sviluppata senza Claude Code). |
+| **v1.1** | Primi fix introdotti con l'aiuto di Claude Code. |
+| **v1.2** | Ottimizzazione del codice e aggiunta di commenti (Claude Code). |
+| **v1.2.1** | Aggiunto suffisso con data e ora al nome del file Excel di output. |
+| **v1.3** | Metodo migliorato per aumentare l'accuracy delle previsioni. |
+| **v1.4** | Algoritmo rivisto + supporto a doppia modalità di esecuzione: Google Colab **e** locale. |
+| **v1.4.1** | Fix al timer della cella finale del notebook. |
+| **v1.4.2** | Riorganizzazione dei parametri di configurazione nel Modulo A e aggiornamento del README. |
+| **v1.4.3** | Pulizia ambiente di sviluppo: virtual environment locale rinominato in `.venv` (convenzione standard), `.gitignore` aggiornato (rimossa entry obsoleta, escluso `settings.local.json` e i file di lock di Claude Code), `settings.local.json` rimosso dal tracking git. |
 
 ---
 
