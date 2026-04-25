@@ -28,6 +28,10 @@ $RECYCLE.BIN/
 .vscode/launch.json
 # Tieni invece .vscode/extensions.json se vuoi condividere i plugin consigliati
 
+# ─── Claude Code (impostazioni e file di runtime locali) ───────────────────
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+
 # ─── Python (se hai script .py nel progetto) ───────────────────────────────
 __pycache__/
 *.pyc
