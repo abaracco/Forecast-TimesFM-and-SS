@@ -160,7 +160,7 @@ Forecast_finale = round_to_pack(
 
 ### 5️⃣ Metrica di Accuratezza Motul (Modulo C)
 
-La formula di accuratezza è definita dalla Casa Madre e non deve essere modificata:
+La formula di accuratezza è un requisito di business fisso e non deve essere modificata:
 
 **Accuratezza mensile:**
 ```

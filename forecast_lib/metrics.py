@@ -3,13 +3,13 @@ Modulo C — Funzioni di accuratezza Motul (formula aziendale, KPI di business).
 
 Sono il cuore dell'ottimizzazione del backtest: tutto il modulo G esiste
 per massimizzare `accuracy_weighted` su dati storici trattenuti. La formula
-e' fissa per richiesta di Casa Madre — non modificare i 4 casi-zero.
+e' fissa per richiesta di requisito di business — non modificare i 4 casi-zero.
 """
 
 
 def accuracy_single_month(act, fcst):
     """
-    Accuratezza mensile secondo la formula aziendale (Casa Madre):
+    Accuratezza mensile secondo la formula aziendale (requisito di business):
 
         delta = |ACT - FCST|
         ACC_i = 0 se:

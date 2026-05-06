@@ -2,7 +2,7 @@
 Test sulla formula di accuratezza Motul.
 
 Sono il cuore del backtest: la funzione DEVE essere immutabile
-(richiesta di Casa Madre). Qui copriamo:
+(requisito di business fisso). Qui copriamo:
   - caso perfetto (forecast = realta')
   - i 4 casi-zero della formula (ACT<=0, FCST<=0, sotto-stima >50%,
     sopra-stima >100%)
