@@ -2,8 +2,8 @@
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/abaracco/Forecast-TimesFM-and-SS/blob/main/Forecast_TimesFM_and_SS.ipynb)
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
-[![Google Colab](https://img.shields.io/badge/Esegui%20su-Google%20Colab-orange.svg)](https://colab.research.google.com/)
 [![TimesFM](https://img.shields.io/badge/Modello-TimesFM--2.5--200M-green.svg)](https://huggingface.co/google/timesfm-2.5-200m-pytorch)
 [![License](https://img.shields.io/badge/Licenza-MIT-lightgrey.svg)](LICENSE)
 
