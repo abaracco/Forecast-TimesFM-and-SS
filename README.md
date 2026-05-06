@@ -371,7 +371,7 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 
 | Parametro | Default | Descrizione |
 |-----------|---------|-------------|
-| `HORIZON` | `25` | Mesi da prevedere nel forecast futuro |
+| `HORIZON` | `24` | Mesi da prevedere nel forecast futuro (2 anni) |
 | `HORIZON_BACKTEST` | `12` | Mesi della finestra di valutazione nel backtest |
 | `MIN_HISTORY_POINTS` | `6` | Minimo mesi di storico richiesti per includere uno SKU |
 | `N_BACKTEST_ORIGINS` | `2` | Origini di backtest (`1` = singolo split, `2`+ = rolling-origin con shift di 6 mesi) |

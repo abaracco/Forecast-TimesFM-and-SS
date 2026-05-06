@@ -79,7 +79,7 @@ The notebook is organized in 13 cells (down from 23 pre-v1.5.0): one for Module 
 |---|---|---|
 | `COLAB` | True | Execution mode: `True` = Google Colab, `False` = local execution |
 | `ASK_SAVE_PATH` | False | Local mode only: `True` = open save dialog for output file, `False` = save to `./output/` |
-| `HORIZON` | 25 | Months to forecast |
+| `HORIZON` | 24 | Months to forecast (2 years) |
 | `HORIZON_BACKTEST` | 12 | Backtest evaluation window |
 | `MIN_HISTORY_POINTS` | 6 | Minimum historical months per SKU |
 | `REMOVE_OUTLIERS` | True | Enable winsorizing |
