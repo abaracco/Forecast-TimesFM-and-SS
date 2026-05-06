@@ -1,4 +1,4 @@
-# 📦 Forecast TimesFM and SS 1.4.3
+# 📦 Forecast TimesFM and SS 1.4.4
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
@@ -32,8 +32,8 @@ Il notebook è organizzato in celle raggruppate per modulo funzionale:
 | **D** | Calibrazione stagionale | Calcolo fattori di aggiustamento (Theil-Sen log-lineare) per mesi critici (es. agosto, dicembre) |
 | **E** | Arrotondamento | Arrotondamento al multiplo d'imballo (`"up"` / `"down"` / `"nearest"`) |
 | **F** | Modello TimesFM | Caricamento manuale del modello, auto-detection GPU/CPU, smoke test, inferenza batch |
-| **G** | Backtest | Rolling-origin grid search (grossolano + fine) dello scaling factor ottimale, con shrinkage opzionale, senza data leakage |
-| **H** | Forecast futuro | Generazione previsioni con scaling + calibrazione stagionale + arrotondamento |
+| **G** | Backtest | Rolling-origin grid search (grossolano + fine) dello scaling factor ottimale, con shrinkage opzionale, senza data leakage. Disattivabile via `RUN_BACKTEST` |
+| **H** | Forecast futuro | Generazione previsioni con scaling + calibrazione stagionale + aggiustamento di business + arrotondamento |
 | **I** | Inventario | Classificazione ABC (Pareto) e XYZ (CV), calcolo scorta di sicurezza |
 | **J** | Export | Costruzione tabella finale e download del file Excel |
 
@@ -119,9 +119,39 @@ q_finale = α × q_sku + (1 − α) × q_globale
 - Per ogni SKU viene scelto il fattore che **massimizza l'accuratezza Motul pesata**
 - `df_backtest_results` mantiene la stessa struttura (SKU, BestQuantile, BestAccuracy, TotalWeight)
 
+#### d) Disattivazione totale del backtest (`RUN_BACKTEST`)
+
+Per simulazioni rapide o per confrontare il forecast ottimizzato con una baseline non-ottimizzata, il backtest può essere completamente saltato impostando `RUN_BACKTEST = False`. In quel caso:
+
+- L'intero Modulo G non viene eseguito (risparmio di tempo significativo, soprattutto su molti SKU)
+- Tutti gli SKU usano `q = 0.5` in Modulo H, ovvero la **mediana TimesFM nativa** (ottimizzata internamente per pinball loss, non per la metrica Motul)
+- Lo shrinkage non si applica (è una sotto-opzione del backtest)
+
+Questa è una scelta forte: senza backtest il forecast non è più allineato al KPI di business Motul. Da usare consapevolmente, tipicamente solo in fase di simulazione o test metodologico.
+
 ---
 
-### 4️⃣ Metrica di Accuratezza Motul (Modulo C)
+### 4️⃣ Aggiustamento di Business (Modulo H)
+
+Tra calibrazione stagionale e arrotondamento al pack, il forecast viene moltiplicato per `BUSINESS_ADJUSTMENT_FACTOR`. È una **leva manageriale di procurement**, ortogonale al modello: serve a riflettere scenari esogeni (crisi, vincoli di stock, cambi di domanda di mercato attesi) senza alterare la logica di forecasting o la sua ottimizzazione sul KPI Motul.
+
+```
+Forecast_finale = round_to_pack(
+    TimesFM_q × scaling_factor × calibrazione_stagionale × BUSINESS_ADJUSTMENT_FACTOR
+)
+```
+
+| Valore | Effetto |
+|---|---|
+| `1.0` (default) | Nessun aggiustamento — pipeline standard |
+| `< 1.0` (es. `0.85`) | Abbassa il forecast (-15% nell'esempio) — utile per scenari di contrazione domanda |
+| `> 1.0` (es. `1.10`) | Alza il forecast (+10%) — utile per scenari di crescita o copertura prudenziale |
+
+> **Interazione con `ROUNDING_MODE`**: con `"up"` e fattore < 1, l'arrotondamento per eccesso può "rimangiarsi" parte della riduzione su SKU con pack grandi. Con `"nearest"` (default) l'effetto è marginale; con `"down"` la riduzione viene anzi accentuata. Comportamento atteso e coerente con la logica di procurement.
+
+---
+
+### 5️⃣ Metrica di Accuratezza Motul (Modulo C)
 
 La formula di accuratezza è definita dalla Casa Madre e non deve essere modificata:
 
@@ -146,7 +176,7 @@ I mesi con volumi maggiori pesano di più. Questo è il KPI reale riportato come
 
 ---
 
-### 5️⃣ Classificazione ABC/XYZ e Scorta di Sicurezza (Modulo I)
+### 6️⃣ Classificazione ABC/XYZ e Scorta di Sicurezza (Modulo I)
 
 #### Classificazione ABC — Pareto sui volumi
 
@@ -316,7 +346,8 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 | `REMOVE_OUTLIERS` | `True` | Taglia i valori estremi (winsorizing al 5°/95° percentile) per ridurre l'impatto degli outlier | Mantiene tutti i valori originali senza filtro |
 | `TRIM_LEADING_ZEROS` | `True` | Rimuove gli zeri in testa alla serie (periodo pre-lancio). Zeri interni e finali sono sempre mantenuti | Mantiene gli zeri iniziali come parte dello storico |
 | `CALIBRATION_MONTHS` | `[8, 12]` | Applica un aggiustamento stagionale (Theil-Sen) ai mesi indicati (es. 8=agosto, 12=dicembre) | Impostare `[]` (lista vuota) per disattivare la calibrazione |
-| `SHRINKAGE_ENABLED` | `True` | Miscela lo scaling factor di ogni SKU con la mediana globale; utile per SKU con poco storico (< 36 mesi) | Usa lo scaling factor ottimale per-SKU senza correzione |
+| `RUN_BACKTEST` | `True` | Esegue il backtest rolling-origin per trovare il quantile ottimale per SKU (massimizza l'accuratezza Motul) | Salta il backtest; tutti gli SKU usano `q = 0.5` (mediana TimesFM nativa, **non** ottimizzata sul KPI Motul) |
+| `SHRINKAGE_ENABLED` | `True` | Miscela lo scaling factor di ogni SKU con la mediana globale; utile per SKU con poco storico (< 36 mesi) — *effetto solo se `RUN_BACKTEST = True`* | Usa lo scaling factor ottimale per-SKU senza correzione |
 | `ROUNDING_MODE` | `"nearest"` | `"nearest"` = arrotonda al multiplo d'imballo più vicino · `"up"` = per eccesso · `"down"` = per difetto | — |
 | `CALCULATE_SS` | `True` | Calcola classificazione ABC/XYZ e scorta di sicurezza | Salta il calcolo; le colonne ABC, XYZ, SafetyStock non compaiono nel file di output |
 
@@ -338,6 +369,7 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 | `MIN_HISTORY_POINTS` | `6` | Minimo mesi di storico richiesti per includere uno SKU |
 | `N_BACKTEST_ORIGINS` | `2` | Origini di backtest (`1` = singolo split, `2`+ = rolling-origin con shift di 6 mesi) |
 | `QUANTILE_GRID` | `0.10–0.90` | Griglia grossolana di ricerca dello scaling factor (step 0.05); la griglia fine (step 0.01) è automatica |
+| `BUSINESS_ADJUSTMENT_FACTOR` | `1.0` | Moltiplicatore manageriale applicato al forecast finale (post backtest+calibrazione, pre-arrotondamento). `1.0` = nessun effetto, `<1.0` = abbassa, `>1.0` = alza il forecast |
 | `OUTLIER_LEVEL` | `0.05` | Percentile di taglio per il winsorizing (0.05 = 5°/95°) |
 | `ROUND_DECIMALS` | `3` | Decimali nel risultato finale dopo arrotondamento |
 | `DEFAULT_LEAD_TIME` | `30` | Lead time di default in giorni (usato se la colonna `LT` manca nel file) |
@@ -384,6 +416,8 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 - **Rolling-origin backtest**: più origini temporali (con shift di 6 mesi) riducono la varianza della stima dello scaling factor ottimale, rendendola più robusta a periodi atipici. La media delle accuratezze su più finestre è un'approssimazione di cross-validation per serie temporali.
 - **Griglia a due passaggi**: il primo passaggio (step 0.05) identifica rapidamente la regione ottimale; il secondo (step 0.01) la affina. Il raffinamento non può mai peggiorare il risultato, solo migliorarlo.
 - **Shrinkage dello scaling factor**: per SKU con storico limitato, miscela il q ottimale per-SKU con la mediana globale. Questo è un tradeoff bias-varianza classico (simile a un estimatore empirico di Bayes) che migliora la stabilità delle previsioni fuori campione.
+- **Backtest disattivabile (`RUN_BACKTEST`)**: il backtest è l'unico momento in cui la metrica Motul entra esplicitamente nella scelta dei parametri. Disattivarlo significa rinunciare all'allineamento del forecast al KPI di business — è una scelta forte, da usare solo per simulazioni o confronto con baseline non-ottimizzata.
+- **Aggiustamento di business separato dal modello**: `BUSINESS_ADJUSTMENT_FACTOR` agisce post-modello come moltiplicatore esplicito, mantenendo separata la logica di forecasting (modello) da quella di scenario (decisione manageriale). Questo rende le simulazioni *auditable*: l'effetto è quantificato esattamente e tracciabile, a differenza di tweak indiretti via parametri del modello.
 - **Scorta di sicurezza sempre arrotondata per eccesso**: indipendentemente dal `ROUNDING_MODE` impostato per i forecast, la scorta di sicurezza usa sempre `"up"` per garantire copertura.
 - **Guardia ABC**: se il volume totale nel periodo di lookback è zero, tutti gli SKU vengono classificati come classe C per evitare divisioni per zero.
 - **Inferenza batch con fallback automatico**: il modello tenta prima un forecast batch (tutti gli SKU in una chiamata). Se fallisce (es. per limiti di memoria), ricade automaticamente su forecast singoli per SKU.
@@ -403,6 +437,7 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 | **v1.4.1** | Fix al timer della cella finale del notebook. |
 | **v1.4.2** | Riorganizzazione dei parametri di configurazione nel Modulo A e aggiornamento del README. |
 | **v1.4.3** | Pulizia ambiente di sviluppo: virtual environment locale rinominato in `.venv` (convenzione standard), `.gitignore` aggiornato (rimossa entry obsoleta, escluso `settings.local.json` e i file di lock di Claude Code), `settings.local.json` rimosso dal tracking git. |
+| **v1.4.4** | Aggiunta `RUN_BACKTEST` per disattivare l'intero Modulo G (utile per simulazioni rapide o baseline non ottimizzata sul MAPE Motul) e `BUSINESS_ADJUSTMENT_FACTOR` come leva manageriale di procurement applicata tra calibrazione e arrotondamento (ortogonale al modello). |
 
 ---
 
