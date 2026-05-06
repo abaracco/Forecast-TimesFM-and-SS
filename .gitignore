@@ -40,6 +40,7 @@ __pycache__/
 venv/
 .venv/
 timesfm/
+.pytest_cache/
 
 # ─── Log e file di debug ───────────────────────────────────────────────────
 *.log

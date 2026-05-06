@@ -1,4 +1,4 @@
-# 📦 Forecast TimesFM and SS 1.4.4
+# 📦 Forecast TimesFM and SS 1.5.0
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
@@ -20,22 +20,29 @@ Il risultato è un file Excel completo con storico, previsioni future e metriche
 
 ---
 
-## 🏗️ Architettura: 10 Moduli (A–J)
+## 🏗️ Architettura: notebook + package `forecast_lib`
 
-Il notebook è organizzato in celle raggruppate per modulo funzionale:
+A partire dalla v1.5.0 il progetto è strutturato in due livelli:
 
-| Modulo | Nome | Descrizione |
-|--------|------|-------------|
-| **A** | Configurazione | Parametri globali, soglie, mappatura colonne Excel |
-| **B** | Preprocessing | Caricamento file, rilevamento colonne temporali, conversione wide→long, filtro SKU, winsorizing |
-| **C** | Serie storiche | Costruzione dataset di backtest (storico troncato + valori reali); definizione della metrica di accuratezza Motul |
-| **D** | Calibrazione stagionale | Calcolo fattori di aggiustamento (Theil-Sen log-lineare) per mesi critici (es. agosto, dicembre) |
-| **E** | Arrotondamento | Arrotondamento al multiplo d'imballo (`"up"` / `"down"` / `"nearest"`) |
-| **F** | Modello TimesFM | Caricamento manuale del modello, auto-detection GPU/CPU, smoke test, inferenza batch |
-| **G** | Backtest | Rolling-origin grid search (grossolano + fine) dello scaling factor ottimale, con shrinkage opzionale, senza data leakage. Disattivabile via `RUN_BACKTEST` |
-| **H** | Forecast futuro | Generazione previsioni con scaling + calibrazione stagionale + aggiustamento di business + arrotondamento |
-| **I** | Inventario | Classificazione ABC (Pareto) e XYZ (CV), calcolo scorta di sicurezza |
-| **J** | Export | Costruzione tabella finale e download del file Excel |
+- **Notebook** (`Forecast_TimesFM_and_SS.ipynb`) — contiene la **configurazione** (Modulo A) e l'**orchestrazione** (chiamate alle funzioni nell'ordine A → J). È quello che apri e lanci.
+- **Package `forecast_lib/`** — contiene tutta la **matematica della pipeline** estratta dal notebook in file `.py` brevi, leggibili e testabili. In Colab viene clonato automaticamente all'avvio del notebook (pattern `git clone`), in locale è già a fianco del notebook.
+
+Mappa modulo → file:
+
+| Modulo | Nome | File `forecast_lib/` | Descrizione |
+|--------|------|----------------------|-------------|
+| **A** | Configurazione | *(notebook, prima cella)* | Parametri globali, soglie, mappatura colonne Excel |
+| **B** | Preprocessing | `preprocessing.py` | Caricamento file, rilevamento colonne temporali, conversione wide→long, filtro SKU, winsorizing |
+| **C** | Serie storiche & metrica | `preprocessing.py` + `metrics.py` | Costruzione dataset di backtest; metrica di accuratezza Motul (`accuracy_single_month`, `accuracy_weighted`) |
+| **D** | Calibrazione stagionale | `calibration.py` | Theil-Sen log-lineare e fattori di calibrazione per-SKU + globali |
+| **E** | Arrotondamento | `rounding.py` | `round_to_pack` (`"up"` / `"down"` / `"nearest"`) |
+| **F** | Modello TimesFM | `model.py` | `setup_timesfm` (loader manuale) + `forecast_all_skus_point` (batch con fallback per-SKU) |
+| **G** | Backtest | `backtest.py` | `run_backtest`: rolling-origin grid search + shrinkage, senza data leakage. Disattivabile via `RUN_BACKTEST` |
+| **H** | Forecast futuro | *(notebook + helpers da altri moduli)* | Pipeline scaling + calibrazione + business adjustment + arrotondamento |
+| **I** | Inventario | `inventory.py` | `calculate_inventory_logic`: ABC (Pareto) + XYZ (CV) + scorta di sicurezza |
+| **J** | Export | `export.py` | `build_forecast_wide`, `build_final_table`, `save_excel` |
+
+> **Perché questa struttura?** Il notebook resta breve e leggibile (orchestrazione + grafici + risultati intermedi visibili). Le funzioni vivono in file Python normali, sono testabili con `pytest`, ricercabili dal tuo IDE, e non si appesantiscono ad ogni esecuzione del notebook. La separazione configurazione/codice rende anche più trasparente cosa è una scelta utente (Modulo A) e cosa è logica di pipeline (`forecast_lib/`).
 
 ---
 
@@ -424,6 +431,47 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 
 ---
 
+## 📂 Struttura del progetto
+
+```
+Forecast_TimesFM_and_SS/
+├── Forecast_TimesFM_and_SS.ipynb   # notebook (config + orchestrazione)
+├── forecast_lib/                    # matematica della pipeline
+│   ├── __init__.py
+│   ├── preprocessing.py             # Modulo B
+│   ├── metrics.py                   # Modulo C (formula Motul)
+│   ├── calibration.py               # Modulo D (Theil-Sen + fattori stagionali)
+│   ├── rounding.py                  # Modulo E
+│   ├── model.py                     # Modulo F (loader TimesFM + forecast batch)
+│   ├── backtest.py                  # Modulo G (grid search rolling-origin)
+│   ├── inventory.py                 # Modulo I (ABC/XYZ + safety stock)
+│   └── export.py                    # Modulo J
+├── tests/                            # test pytest sulle funzioni pure
+│   ├── conftest.py
+│   ├── test_metrics.py
+│   ├── test_rounding.py
+│   ├── test_calibration.py
+│   ├── test_preprocessing.py
+│   ├── test_inventory.py
+│   └── test_export.py
+├── pytest.ini
+├── requirements.txt                 # dipendenze CPU
+├── requirements-nvidia.txt          # dipendenze GPU NVIDIA
+├── README.md
+└── CLAUDE.md
+```
+
+### Eseguire i test
+
+I test verificano le funzioni pure del package (formula Motul, Theil-Sen, arrotondamenti, ABC/XYZ, ecc.). Sono utili per evitare regressioni durante future modifiche.
+
+```bash
+pip install pytest
+pytest
+```
+
+---
+
 ## 🏷️ Storia delle versioni
 
 | Tag | Sintesi |
@@ -438,6 +486,7 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 | **v1.4.2** | Riorganizzazione dei parametri di configurazione nel Modulo A e aggiornamento del README. |
 | **v1.4.3** | Pulizia ambiente di sviluppo: virtual environment locale rinominato in `.venv` (convenzione standard), `.gitignore` aggiornato (rimossa entry obsoleta, escluso `settings.local.json` e i file di lock di Claude Code), `settings.local.json` rimosso dal tracking git. |
 | **v1.4.4** | Aggiunta `RUN_BACKTEST` per disattivare l'intero Modulo G (utile per simulazioni rapide o baseline non ottimizzata sul MAPE Motul) e `BUSINESS_ADJUSTMENT_FACTOR` come leva manageriale di procurement applicata tra calibrazione e arrotondamento (ortogonale al modello). |
+| **v1.5.0** | **Refactor strutturale**: matematica della pipeline estratta dal notebook nel package `forecast_lib/` (file `.py` per modulo). Notebook ridotto da ~1960 a ~870 righe, con sole celle di configurazione e orchestrazione. Aggiunta `tests/` con suite pytest per le funzioni pure. In Colab il package viene clonato automaticamente da GitHub all'avvio (sempre ultima versione di `main`). |
 
 ---
 
