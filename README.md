@@ -1,4 +1,4 @@
-# 📦 Forecast TimesFM and SS 1.5.0
+# 📦 Forecast TimesFM and SS 1.5.1
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
@@ -252,7 +252,7 @@ Il file Excel di output contiene una riga per SKU con:
 3. **Storico domanda**: colonne `YYYY_MM` (valori winsorizzati)
 4. **Forecast futuro**: colonne `fYYYY_MM` (valori scalati + calibrati + arrotondati)
 
-Il nome del file include automaticamente data e ora di estrazione: `Forecast and SS YYYY MM DD HH_MM.xlsx`.
+Il nome del file include automaticamente data e ora (con secondi) di estrazione: `Forecast and SS YYYY MM DD HH_MM_SS.xlsx`.
 
 ---
 
@@ -487,6 +487,7 @@ pytest
 | **v1.4.3** | Pulizia ambiente di sviluppo: virtual environment locale rinominato in `.venv` (convenzione standard), `.gitignore` aggiornato (rimossa entry obsoleta, escluso `settings.local.json` e i file di lock di Claude Code), `settings.local.json` rimosso dal tracking git. |
 | **v1.4.4** | Aggiunta `RUN_BACKTEST` per disattivare l'intero Modulo G (utile per simulazioni rapide o baseline non ottimizzata sul MAPE Motul) e `BUSINESS_ADJUSTMENT_FACTOR` come leva manageriale di procurement applicata tra calibrazione e arrotondamento (ortogonale al modello). |
 | **v1.5.0** | **Refactor strutturale**: matematica della pipeline estratta dal notebook nel package `forecast_lib/` (file `.py` per modulo). Notebook ridotto da ~1960 a ~870 righe, con sole celle di configurazione e orchestrazione. Aggiunta `tests/` con suite pytest per le funzioni pure. In Colab il package viene clonato automaticamente da GitHub all'avvio (sempre ultima versione di `main`). |
+| **v1.5.1** | Fix al timer di cella: la cella che registra i callback non è misurabile (il `pre_run_cell` non scatta su di essa) e viene saltata via early-return; risolto il valore spurio osservato su Colab in caso di ri-esecuzione della cella di config. Suffisso del file di output esteso ai secondi (`HH_MM_SS`) per evitare collisioni di nome su run ravvicinati. |
 
 ---
 
