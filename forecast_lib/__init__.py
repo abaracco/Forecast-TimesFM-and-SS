@@ -16,6 +16,13 @@ Mappa modulo -> file:
     Modulo G  ->  backtest.py
     Modulo I  ->  inventory.py           (ABC/XYZ + scorta di sicurezza)
     Modulo J  ->  export.py              (costruzione tabella finale)
+
+Fuori dalla numerazione dei moduli:
+    versioning.py  ->  pin del checkout TimesFM e avvisi di aggiornamento
+
+`__version__` e' allineato al tag di rilascio del repository e deve coincidere
+con EXPECTED_FORECAST_LIB_VERSION nel Modulo A del notebook: e' cosi' che il
+notebook si accorge di girare su una libreria diversa da quella che si aspetta.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.6.0"
