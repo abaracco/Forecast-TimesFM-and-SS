@@ -98,7 +98,8 @@ The notebook is organized in 13 cells (down from 23 pre-v1.5.0): one for Module 
 | `EXPECTED_FORECAST_LIB_VERSION` | `"1.6.0"` | Version of `forecast_lib` this notebook expects; must match `forecast_lib.__version__` |
 | `REPO_BRANCH` | `"main"` | Branch cloned in Colab. Keep on `main` in production; change **only** to test a working branch |
 | `CHECK_FOR_UPDATES` | True | Startup check for newer TimesFM / `forecast_lib` versions. Prints a warning, never updates anything. Active in Colab too — that is where a pin ages unnoticed |
-| `EXPORT_AUDIT` | True | Emit the second "Run info" sheet and the two audit CSVs next to the output |
+| `EXPORT_AUDIT` | True | Emit the second "Run info" sheet inside the Excel file. Adds no files, so it stays on by default |
+| `EXPORT_AUDIT_CSV` | False | Emit the two audit CSVs next to the output. Two extra files per run (two extra downloads in Colab), so it is **off** by default: turn it on when comparing two runs — typically a TimesFM update — and off again afterwards |
 | `ASK_SAVE_PATH` | False | Local mode only: `True` = open save dialog for output file, `False` = save to `./output/` |
 | `HORIZON` | 24 | Months to forecast (2 years) |
 | `HORIZON_BACKTEST` | 12 | Backtest evaluation window |

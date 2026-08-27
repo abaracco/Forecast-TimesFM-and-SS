@@ -257,7 +257,10 @@ Il nome del file include automaticamente data e ora (con secondi) di estrazione:
 
 ### Foglio "Run info" e CSV di audit
 
-Con `EXPORT_AUDIT = True` (default) il file Excel contiene un **secondo foglio "Run info"** e vengono scritti **due CSV** accanto all'output. Servono a ricostruire a posteriori come è stato prodotto un file, e a confrontare due run fra loro.
+I due artefatti sono governati da **due parametri distinti**, perché servono a cose diverse e costano cose diverse:
+
+- **`EXPORT_AUDIT = True`** (default) aggiunge un **secondo foglio "Run info"** dentro lo stesso file Excel. Non produce file aggiuntivi: è il registro con cui, mesi dopo, si ricostruisce come è stato prodotto un forecast — per esempio se quel run girasse degradato a batch 1. Conviene lasciarlo attivo.
+- **`EXPORT_AUDIT_CSV = False`** (default) governa i **due CSV** scritti accanto all'output. Quelli sono due file in più a ogni esecuzione (in Colab, due download in più), e servono a **confrontare due run fra loro**: si accendono per l'occasione — il caso tipico è un aggiornamento di TimesFM — e si rispengono dopo.
 
 | Artefatto | Contenuto |
 |---|---|
@@ -399,7 +402,8 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 | `EXPECTED_FORECAST_LIB_VERSION` | `"1.6.0"` | Versione di `forecast_lib` che questo notebook si aspetta. Se non coincide con `forecast_lib.__version__` il notebook lo dice, con il messaggio giusto nei due versi (codice vecchio / notebook vecchio) |
 | `REPO_BRANCH` | `"main"` | Branch clonato in Colab. Va tenuto su `main` in produzione; si cambia **solo** per collaudare un branch di lavoro |
 | `CHECK_FOR_UPDATES` | `True` | All'avvio verifica se esistono versioni più recenti (TimesFM e `forecast_lib`) e stampa un avviso. **Non aggiorna mai nulla da solo.** Attivo anche in Colab: è lì che un pin rischia di invecchiare inosservato |
-| `EXPORT_AUDIT` | `True` | Emette il foglio "Run info" e i due CSV di audit (vedi [Formato del file di output](#-formato-del-file-di-output)) |
+| `EXPORT_AUDIT` | `True` | Emette il secondo foglio "Run info" dentro l'Excel. Non aggiunge file (vedi [Formato del file di output](#-formato-del-file-di-output)) |
+| `EXPORT_AUDIT_CSV` | `False` | Emette i due CSV di audit accanto all'output. Due file in più a ogni run: si accende quando servono, cioè per confrontare due esecuzioni |
 
 #### Se la memoria della GPU non basta
 
@@ -484,7 +488,7 @@ TimesFM è **pinnato a un tag** e i pesi a una **revision**: nessuno dei due si 
 
 4. **`pytest -m slow`** — clone git reali ed equivalenza numerica sul modello vero. È qui che si scopre se la nuova versione ha spostato il percorso del modulo PyTorch, rinominato la classe del modello o cambiato la firma di `ForecastConfig`.
 
-5. **Confrontare i numeri con una run di riferimento.** Produrre un output con la versione vecchia e uno con la nuova, sullo stesso file di input e con gli stessi parametri, e confrontarli:
+5. **Confrontare i numeri con una run di riferimento.** Prima di lanciare le due esecuzioni, **accendere `EXPORT_AUDIT_CSV = True`** nel Modulo A: di default è spento, e senza i due CSV il confronto si riduce al solo file Excel, perdendo gli scaling factor per SKU — cioè proprio ciò che spiega *perché* i numeri si sono mossi. Poi produrre un output con la versione vecchia e uno con la nuova, sullo stesso file di input e con gli stessi parametri, e confrontarli:
 
    ```bash
    python tests/tools/compare_forecast_outputs.py        --baseline "output/<vecchia>.xlsx"    --new "output/<nuova>.xlsx"        --baseline-backtest "output/<vecchia> backtest ....csv"        --new-backtest      "output/<nuova> backtest ....csv"        --mode batch --report confronto.md
@@ -492,7 +496,7 @@ TimesFM è **pinnato a un tag** e i pesi a una **revision**: nessuno dei due si 
 
    L'utility calcola l'impatto aggregato (con e senza segno), verifica che ogni scostamento grande sia spiegato da un cambio dello scaling factor e produce la diagnostica: SKU con `q` diverso, `q_global` prima e dopo, KPI Motul, top-20 per scostamento assoluto **e** relativo, elenco completo degli SKU di classe A/B più colpiti. Un cambio di versione del modello *può* legittimamente spostare i numeri — il punto non è che non si muovano, è **guardarli prima di consegnarli**.
 
-6. **Aggiornare la documentazione**: questo README, `CLAUDE.md` e la tabella delle versioni.
+6. **Aggiornare la documentazione**: questo README, `CLAUDE.md` e la tabella delle versioni. E **rimettere `EXPORT_AUDIT_CSV = False`**, così le esecuzioni ordinarie tornano a produrre un solo file.
 
 > Se la verifica del pin fallisce (rete giù, cartella `./timesfm` in stato inconsistente), l'esecuzione si ferma con un messaggio esplicito. Per procedere comunque — consapevolmente — impostare `TIMESFM_PIN_STRICT = False`: il run parte, ma viene marcato come non riproducibile nel foglio "Run info" e in un avviso finale.
 
