@@ -1,3 +1,9 @@
+# ─── Risultati delle esecuzioni ────────────────────────────────────────────
+# Tutto cio' che la pipeline produce: Excel di output, CSV di audit dei run,
+# artefatti dei collaudi. Sono risultati, non codice: si rigenerano eseguendo.
+# La cartella viene ricreata da os.makedirs() nel Modulo A.
+output/
+
 # ─── File Excel (binari, non versionabili riga per riga) ───────────────────
 *.xlsx
 *.xlsm
