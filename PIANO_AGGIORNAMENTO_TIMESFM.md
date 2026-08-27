@@ -852,12 +852,20 @@ totale percepito (il resto è caricamento modello e I/O, che non accelerano).
 
 Dopo l'implementazione si ripete la stessa run con `INFERENCE_BATCH_SIZE = 32` (run C):
 
-| Grandezza | Prima (batch 1) | Dopo (batch 32) | Atteso | Misurato |
+**Misurato il 2026-08-27** (run B vs run C, RTX 2070 SUPER). La colonna "prima" e' la
+**run B**, non la misura di riferimento di stamattina: e' quella l'unica baseline formale.
+
+| Grandezza | Run B (batch 1) | Run C (batch 32) | Atteso | **Misurato** |
 |---|---|---|---|---|
-| Cella Modulo G | 190,9 s | *da compilare* | ~9 s | |
-| Cella Modulo H | 94,4 s | *da compilare* | ~3 s | |
-| Totale run | 5 m 08,7 s | *da compilare* | ~40 s | |
-| `fl_inference_seconds` | n/d su `main` | *da compilare* | **gate ≥5x** | |
+| Cella Modulo G | 194,1 s | 11,4 s | ~9 s | **17,0x** |
+| Cella Modulo H | 97,1 s | 3,6 s | ~3 s | **27,0x** |
+| Totale run | 5 m 13,1 s | 49,3 s | ~40 s | **6,4x** |
+| `fl_inference_seconds` | 289,75 s | 9,43 s | **gate >=5x** | **30,7x — PASS** |
+
+Lo scarto fra i 30,7x dell'inferenza e i 6,4x percepiti e' interamente nei costi fissi che il
+batching non tocca: 3,5 s di grid search in Python, ~35 s fra caricamento del modello, I/O ed
+Excel. La cella 6 peggiora (5,1 -> 12,9 s): compilare a batch 32 costa piu' che a batch 1, ed
+e' un costo pagato una volta sola.
 
 ### T1 — Equivalenza numerica e padding *(automatico, `slow`)*
 
@@ -957,13 +965,18 @@ errori, calcola i gate di § 9.2 e produce la diagnostica.
 **Setup comune**: `./timesfm` su `v2.0.2` in tutti i run, stesso file Motul reale,
 `N_BACKTEST_ORIGINS = 2`, parametri di default.
 
-- [ ] **T4.1 — il refactor è neutro.** Run A vs Run B → **G1**.
-- [ ] **T4.2 — l'effetto del batching.** Run B vs Run C → **G2, G3, G4, G5** + diagnostica.
-- [ ] **Performance** (B vs C, `fl_inference_seconds`): **su GPU ≥ 5x**; **su CPU nessun
-      gate** — si misura e si registra, perché su CPU il collo di bottiglia sono i FLOPs del
-      transformer. Registrare anche il tempo di cella del Modulo G, per documentare quanto
-      pesa la grid search in Python (§ 1.3).
-- [ ] Report scritto con la diagnostica di § 9.2. Gate non soddisfatti → § 9.3.
+- [x] **T4.1 — il refactor è neutro.** Run A vs Run B → **G1 PASS**: forecast bit-identico su
+      24 colonne x 571 SKU, CSV di backtest identico su 540 SKU, **0 SKU** con `BestQuantile`
+      diverso, KPI 69,7774% -> 69,7774% (+0,0000 pp). Report in `output/_report_T4.1.md`.
+- [x] **T4.2 — l'effetto del batching.** Run B vs Run C → **G2, G3, G4, G5 tutti PASS**, e con
+      margine totale: volume 26.623.125,5 identico al decimale (G3 +0,0000%), Sigma|Delta| = 0,0
+      (G4 0,0000%), **0 SKU** con `BestQuantile` o `BestQuantileRaw` diverso, 0 SKU con
+      |Delta| > 5%. Le differenze float esistono (KPI 0,6977744026 -> 0,6977735986, settima
+      cifra) ma l'arrotondamento le assorbe integralmente. Report in `output/_report_T4.2.md`.
+- [x] **Performance** (B vs C, `fl_inference_seconds`): 289,75 s -> 9,43 s = **30,7x su GPU**,
+      contro un gate di >=5x. Cella Modulo G 194,1 -> 11,4 s; totale run 5m13,1s -> 49,3 s.
+      Vedi la tabella di § 10.0.1 per la scomposizione.
+- [x] Report scritto con la diagnostica di § 9.2. § 9.3 non attivato: nessun gate mancato.
 
 ### T4b — Percorso `RUN_BACKTEST = False` *(manuale)*
 
@@ -972,9 +985,15 @@ Senza backtest tutti gli SKU usano `q = 0.5`: **nessun flip di `q`**, quindi res
 differenze di arrotondamento, che § 9.1 punto 1 quantifica in **meno di un valore** sull'intero
 file. I gate sono quindi molto più stretti che in T4.2.
 
-- [ ] Run B' vs Run C' → **G2**, **G3 con soglia 0.05%**, **G4 con soglia 0.05%**.
-      G1 e G5 non si applicano (non c'è backtest, quindi non c'è `BestQuantile`).
-- [ ] Fuori tolleranza → § 9.3.
+- [x] Run B' vs Run C' → **G2, G3, G4 tutti PASS** con le soglie strette. Volume
+      24.016.650,7 -> 24.016.638,7, scostamento **-0,0000%** (soglia 0,05%); Sigma|Delta| = 12,0
+      su 24 milioni, rapporto **0,0000%**. Report in `output/_report_T4b.md`.
+- [x] **La previsione di § 9.1 punto 1 e' confermata alla lettera**: su 13.704 celle di
+      forecast (571 SKU x 24 mesi) ne differisce **esattamente una**. SKU 105880 (classe B,
+      pack 12 L), mese `f2026_10`: 2016 -> 2004, cioe' **un pack**. Il valore grezzo cadeva
+      sulla mezzeria del pack e la differenza float alla settima cifra lo ha fatto cadere
+      dall'altra parte. E' il comportamento atteso di `round_to_pack`, non un difetto.
+- [x] Fuori tolleranza → § 9.3. **Non attivato.**
 
 ### T5 — Collaudo Colab *(manuale, bloccante)*
 
@@ -1011,9 +1030,9 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
       tocca, quindi "pytest verde" da solo non prova nulla).
 - [x] `pytest -m slow` verde: T1 (a-f) e T2b (tutti i casi).
 - [x] T2 e T3 verdi, incluso il gruppo sui fallback e su `save_excel`.
-- [ ] **T4.1 verde (G1 bit-identico)** — precondizione per valutare T4.2.
-- [ ] T4.2 eseguito, G2-G5 rispettati, report scritto con la diagnostica di § 9.2.
-- [ ] T4b eseguito, G2-G4 rispettati.
+- [x] **T4.1 verde (G1 bit-identico)** — precondizione per valutare T4.2. *(2026-08-27)*
+- [x] T4.2 eseguito, G2-G5 rispettati, report scritto con la diagnostica di § 9.2. *(2026-08-27)*
+- [x] T4b eseguito, G2-G4 rispettati. *(2026-08-27)*
 - [ ] T5 eseguito su Colab (runtime GPU) da branch di lavoro, tutti i criteri soddisfatti;
       smoke run finale da `main` dopo il merge.
 - [x] **Code review dell'intero diff**: aderenza al piano, gestione errori, e verifica che
@@ -1025,7 +1044,7 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
       questa lista. Senza questa regola si finirebbe con correzioni mai passate da alcun
       collaudo, che è esattamente ciò che la richiesta "il piano si conclude quando il codice
       è stato rivisto, corretto **e testato**" esclude.
-- [ ] **Requisito performance: soddisfatto** — oppure **rinunciato (§ 9.3) con approvazione
+- [x] **Requisito performance: soddisfatto** *(30,7x su GPU, gate >=5x)* — oppure **rinunciato (§ 9.3) con approvazione
       esplicita dell'utente registrata in § 12.** Una DoD tutta spuntata con
       `INFERENCE_BATCH_SIZE = 1` e senza questa riga sarebbe un piano "riuscito" che non
       consegna ciò che è stato chiesto.
@@ -1096,8 +1115,9 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Tag di pre-release (rilievo 7) | **Corretto.** `_parse_version` e' tollerante per costruzione e leggeva `v2.1.0rc1` come 2.1.0, proponendo un release candidate come aggiornamento. `_latest_tag` ora filtra con `_is_release_tag` |
 | 2026-08-27 | Degrado permanente su errore non-OOM (rilievo 2) | **NON applicato: decisione dell'utente.** Un fallimento non-OOM (es. una serie malformata) fa scendere a batch 1 per tutto il resto del run, ~40x piu' lento, mentre il batch size non c'entra con la causa. Correggerlo significherebbe pero' ripristinare il batch dopo il loop per-input, cioe' contraddire la scelta esplicita di § 1.3(c) e del registro ("degrado permanente per il run"). Il rilievo 1, corretto, toglie meta' del danno: se il fallimento e' sulla prima chiamata il run non viene piu' dichiarato non consegnabile |
 | 2026-08-27 | Difetti dell'utility di confronto trovati provandola su file veri | **Corretti tre.** CSV errori vuoto -> `EmptyDataError` (ed e' il caso normale: quasi nessun run ha SKU falliti); `Δ` nel report -> `UnicodeEncodeError` su console Windows cp1252, dopo aver fatto tutto il lavoro; colonne testuali (`ABC`, `XYZ`) dichiarate diverse con "0 differenze mostrate" perche' `pd.to_numeric` le riduceva a NaN. Il confronto e' ora anche indifferente al dtype (`DataFrame.equals` confronta i dtype: `int64` contro `float64` con gli stessi valori era un falso allarme garantito), restando esatto sui float |
-| | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
-| | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
+| 2026-08-27 | Esito di T4.1 / T4.2 / T4b | **Tutti verdi.** T4.1: G1 bit-identico. T4.2: G2-G5 con scostamento aggregato esattamente 0. T4b: una sola cella su 13.704 diversa (un pack su SKU 105880), come previsto da § 9.1. Performance 30,7x contro un gate di 5x |
+| | Esito di T5 | *da compilare* |
+| | Eventuale attivazione di § 9.3 e scelta dell'utente | **Non attivato**: nessun gate mancato |
 
 ---
 
