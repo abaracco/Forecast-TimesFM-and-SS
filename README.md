@@ -312,7 +312,7 @@ Il notebook supporta **due modalità di esecuzione**, controllate dalla variabil
 4. **Scarica il risultato**
    - Al termine del Modulo J, il file Excel verrà scaricato automaticamente nel browser
 
-> ⏱️ **Tempo tipico di esecuzione**: pochi minuti su GPU. Misura di riferimento in locale (RTX 2070 SUPER, 571 SKU, 2 origini di backtest): **5 m 09 s** con `INFERENCE_BATCH_SIZE = 1`, di cui il ~98% è inferenza. Con il default `32` l'inferenza è molto più rapida. Su CPU i tempi sono sensibilmente più lunghi: lì il collo di bottiglia sono i FLOPs del transformer, non il numero di chiamate, quindi il batch aiuta poco.
+> ⏱️ **Tempo tipico di esecuzione**: circa **un minuto su GPU** con i default (571 SKU, 2 origini di backtest) — erano oltre cinque prima dell'inferenza in batch. I numeri completi, per hardware e per modulo, sono in [Prestazioni misurate](#-prestazioni-misurate). Su CPU i tempi sono sensibilmente più lunghi: lì il collo di bottiglia sono i FLOPs del transformer, non il numero di chiamate, quindi il batch aiuta poco.
 
 ---
 
@@ -398,7 +398,7 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 | `TIMESFM_PIN_STRICT` | `True` | `True` = un pin non verificabile **blocca** l'esecuzione. `False` = prosegue con un avviso: valvola per il caso "GitHub irraggiungibile e devo girare comunque". Un run non pinnato viene segnalato a fine esecuzione e registrato nel foglio "Run info" |
 | `TIMESFM_MODEL_ID` | `"google/timesfm-2.5-200m-pytorch"` | Modello su HuggingFace |
 | `TIMESFM_MODEL_REVISION` | commit hash | **Revision dei pesi, pinnata di proposito.** Senza pin HuggingFace risolve `main`, e un aggiornamento dei pesi da parte di Google cambierebbe tutti i forecast senza lasciare traccia. Essendo pinnata non si aggiorna da sola: va **rivalutata a ogni cambio di `TIMESFM_VERSION`** |
-| `INFERENCE_BATCH_SIZE` | `32` | Serie inviate insieme al modello a ogni passata, per dispositivo. Il default della libreria TimesFM è `1`, cioè una serie alla volta; alzarlo accelera l'inferenza di circa 40x su GPU. Vedi la nota sul degrado qui sotto |
+| `INFERENCE_BATCH_SIZE` | `32` | Serie inviate insieme al modello a ogni passata, per dispositivo. Il default della libreria TimesFM è `1`, cioè una serie alla volta; alzarlo accelera l'inferenza di **15-30x su GPU** ([misure](#-prestazioni-misurate)) senza cambiare i numeri. Vedi la nota sul degrado qui sotto |
 | `EXPECTED_FORECAST_LIB_VERSION` | `"1.6.0"` | Versione di `forecast_lib` che questo notebook si aspetta. Se non coincide con `forecast_lib.__version__` il notebook lo dice, con il messaggio giusto nei due versi (codice vecchio / notebook vecchio) |
 | `REPO_BRANCH` | `"main"` | Branch clonato in Colab. Va tenuto su `main` in produzione; si cambia **solo** per collaudare un branch di lavoro |
 | `CHECK_FOR_UPDATES` | `True` | All'avvio verifica se esistono versioni più recenti (TimesFM e `forecast_lib`) e stampa un avviso. **Non aggiorna mai nulla da solo.** Attivo anche in Colab: è lì che un pin rischia di invecchiare inosservato |
@@ -473,6 +473,41 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 > **`git` è una dipendenza a tutti gli effetti**, non solo uno strumento di sviluppo: serve a clonare TimesFM e a verificarne il pin. Vale anche per chi installa scaricando lo ZIP del repository.
 
 > **Uso offline.** Con la revision dei pesi pinnata, HuggingFace riusa la cache locale invece di ricontrollare `main` a ogni avvio: dopo il primo download il modello parte anche senza rete. Il clone di TimesFM è invece **promisor** (`--filter=blob:none`): le operazioni git future che richiedano blob non ancora scaricati hanno bisogno della rete. In pratica, un secondo avvio con `./timesfm` già al tag giusto non tocca la rete, ma una riclonazione sì.
+
+---
+
+## ⚡ Prestazioni misurate
+
+Misure del **2026-08-27** su `v1.6.0`, dataset reale di **571 SKU** (11 anni di storico mensile), orizzonte 24 mesi, backtest a 2 origini con griglia grossolana + fine. Stesso file di input in tutte le esecuzioni.
+
+`INFERENCE_BATCH_SIZE` è il parametro che fa la differenza: il default di TimesFM è **1**, cioè una serie alla volta.
+
+| Ambiente | Batch | Inferenza | Modulo G (backtest) | Modulo H (forecast) | **Totale run** |
+|---|---|---|---|---|---|
+| RTX 2070 SUPER (locale) | 1 | 289,8 s | 194,1 s | 97,1 s | 5m 13s |
+| RTX 2070 SUPER (locale) | **32** | **9,4 s** | **11,4 s** | **3,6 s** | **49 s** |
+| Tesla T4 (Colab) | 1 | 195,0 s | 137,0 s | 67,6 s | 4m 18s |
+| Tesla T4 (Colab) | **32** | **13,0 s** | **17,8 s** | **5,2 s** | **54 s** |
+
+Sul tempo di sola inferenza il guadagno è di **30,7x** in locale e **15,0x** su Colab. Sul tempo percepito scende a ~6x, e la differenza è tutta nei costi fissi che il batching non tocca: caricamento del modello, I/O, scrittura dell'Excel e ~3,5 s di grid search in puro Python. È anche il motivo per cui non ha senso ottimizzare oltre: a batch 32 l'inferenza non è più il collo di bottiglia.
+
+> Su **CPU** il guadagno è molto minore: lì il limite sono i FLOPs del transformer, non il costo per chiamata. Il batch resta comunque utile e non danneggia nulla.
+
+### Equivalenza numerica
+
+Il batching cambia *come* il modello viene invocato, non *cosa* calcola — ma è un'affermazione che va verificata, non assunta. Ogni riga qui sotto è un confronto fra due esecuzioni complete sullo stesso input, valutato con `tests/tools/compare_forecast_outputs.py`:
+
+| Confronto | Cosa dimostra | Esito |
+|---|---|---|
+| v1.5.1 → v1.6.0, entrambe a batch 1 | il refactor non ha spostato nulla | **forecast bit-identico** su 24 colonne × 571 SKU |
+| batch 1 → 32, locale | il batching non cambia i numeri | volume aggregato invariato al decimale, **0 scaling factor cambiati** su 540 |
+| batch 1 → 32, Colab | idem, su hardware diverso | stesso esito |
+| batch 1 → 32, senza backtest | il percorso `RUN_BACKTEST = False` | **1 cella su 13.704**: un pack, su un valore che cadeva sulla mezzeria dell'arrotondamento |
+| locale ↔ Colab, stesso batch | riproducibilità fra GPU diverse | **output bit-identico** |
+
+L'unica differenza osservata in tutto il collaudo è quella singola cella: le differenze in virgola mobile fra batch diversi esistono (si vedono alla settima cifra decimale) ma restano ordini di grandezza sotto il passo di arrotondamento al pack, che le assorbe.
+
+A questo si aggiungono **202 test automatici** offline e **35** che girano contro il modello reale e cloni git veri (`pytest -m slow`).
 
 ---
 
