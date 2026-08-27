@@ -204,8 +204,9 @@ l'implementazione parte più tardi, pinnare a una versione già vecchia signific
 tutto il collaudo su un artefatto superato e doverlo rifare subito dopo. Quindi il primo passo
 è ricontrollare, e **pinnare alla versione più recente che il collaudo può coprire**:
 
-- [ ] `git ls-remote --tags https://github.com/google-research/timesfm.git` → ultimo tag `vX.Y.Z`.
-- [ ] Applicare questa regola di decisione:
+- [x] `git ls-remote --tags https://github.com/google-research/timesfm.git` → ultimo tag `vX.Y.Z`.
+      **Eseguito il 2026-08-27: ultimo tag `v2.0.2` (`4a6c5cda`) — invariato.**
+- [x] Applicare questa regola di decisione: → **riga 1 (`v2.0.2` invariato): si procede come scritto.**
 
 | Ultimo tag trovato | Cosa fare |
 |---|---|
@@ -213,13 +214,18 @@ tutto il collaudo su un artefatto superato e doverlo rifare subito dopo. Quindi 
 | Nuova **patch** `v2.0.z` | **Pinnare alla nuova.** Rifare la verifica di equivalenza di § 1.2 (mezz'ora: worktree sul nuovo tag, stesso loader, stesse 3 serie fisse, confronto bit-a-bit) e annotarne l'esito in § 12 |
 | Nuova **minor/major** `v2.1+` / `v3.x` | **Fermarsi e valutare con l'utente.** L'analisi di § 1.2 dimostra l'inerzia dei cambiamenti *fino a `master` di agosto 2026*: su una minor nuova non vale più. Vanno rifatti: verifica di equivalenza, controllo che l'API (`ForecastConfig`, `from_pretrained`, `compile`, `forecast`) non sia cambiata, e controllo che non sia uscito un **nuovo checkpoint** su HuggingFace — nel qual caso cambia anche `TIMESFM_MODEL_REVISION` e il collaudo diventa un confronto fra modelli diversi, non fra batch size |
 
-- [ ] Ricontrollare anche la revision dei pesi:
+- [x] Ricontrollare anche la revision dei pesi:
       `huggingface_hub.HfApi().model_info("google/timesfm-2.5-200m-pytorch").sha`.
+      **Eseguito il 2026-08-27 con `git ls-remote https://huggingface.co/google/timesfm-2.5-200m-pytorch`
+      (`huggingface_hub` non installato in locale): `main` = `1d952420fba87f3c6dee4f240de0f1a0fbc790e3`,
+      identica al pin. Nessun nuovo checkpoint.**
       Se diversa da `1d952420…`, **non** adottarla in automatico: pinnare quella attuale e
       valutare la nuova a parte, perché cambierebbe tutti i numeri e non è ciò che T4 misura.
-- [ ] Aggiornare `TIMESFM_VERSION` (e, se serve, `TIMESFM_MODEL_REVISION`) nel § 4 e nel
+- [x] Aggiornare `TIMESFM_VERSION` (e, se serve, `TIMESFM_MODEL_REVISION`) nel § 4 e nel
       Modulo A **prima** di iniziare la Fase 1, così tutto il collaudo gira sulla versione
-      definitiva. Registrare la scelta in § 12.
+      definitiva. Registrare la scelta in § 12. **Nessuna modifica necessaria: entrambi i valori
+      già scritti nel § 4 sono quelli attuali. Il Modulo A del notebook non contiene ancora il
+      blocco — lo introduce la Fase 1.0.**
 
 > **Il principio:** si pinna sempre alla versione più recente *che siamo in grado di
 > collaudare adesso*. Il pin non serve a restare indietro, serve a non muoversi da soli.
@@ -243,19 +249,23 @@ committati come blob reali, non come pointer. Verificato sul campo (git 2.55, gi
 `git status`, a marcare i file come modificati. La variante sparse è robusta perché quei file
 **non esistono** nel working tree. In più pesa **338 KB** invece di 6.9-8.4 MB, in ~1,5 s.
 
-- [ ] Cancellare `./timesfm/` (gitignorata, `.gitignore:42`, rigenerabile). Su Windows i file
+- [x] Cancellare `./timesfm/` (gitignorata, `.gitignore:42`, rigenerabile). Su Windows i file
       `.git/objects/pack/*.idx|.pack` sono **read-only**: `shutil.rmtree` solleva
       `PermissionError [WinError 5]` (verificato). Serve un handler `onexc`/`onerror` con
-      `os.chmod(path, stat.S_IWRITE)`.
-- [ ] Riclonare (**PowerShell**, shell primaria di questa macchina):
+      `os.chmod(path, stat.S_IWRITE)`. **Fase 0 eseguita da PowerShell con
+      `Remove-Item -Recurse -Force`, che gestisce già i read-only; l'handler resta necessario
+      per il codice Python della Fase 2.**
+- [x] Riclonare (**PowerShell**, shell primaria di questa macchina):
       ```powershell
       git clone --depth 1 --branch v2.0.2 --filter=blob:none --sparse `
                 https://github.com/google-research/timesfm.git .\timesfm
       git -C .\timesfm sparse-checkout set src
       ```
-- [ ] **Criteri di uscita** (entrambi):
+- [x] **Criteri di uscita** (entrambi): **verificati il 2026-08-27.**
       `git -C timesfm rev-parse HEAD` == `git -C timesfm rev-parse refs/tags/v2.0.2^{commit}`
-      **e** `git -C timesfm status --porcelain` **vuoto**.
+      → entrambi `4a6c5cdae7ac73a450843e035fbfc3ffa08e9caf` ✅
+      **e** `git -C timesfm status --porcelain` **vuoto** ✅
+      Clone risultante: **227 KB** (era 9,7 MB a `a3beaa8`), `src/` presente.
 
 > *Perché non `git describe`:* su `a3beaa8` restituisce `v1.2.6-117-ga3beaa8`. Si confrontano
 > hash di commit.
@@ -1062,10 +1072,11 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Baseline del confronto | **Codice nuovo a batch 1** (run B), non `main`: artefatti simmetrici e unica variabile il batch size. `main` resta coperto da T4.1 |
 | 2026-08-27 | Avvisi di aggiornamento in Colab | **Attivi**: è in Colab che il pin rischia di invecchiare inosservato |
 | 2026-08-27 | `q` sugli SKU con `BestAccuracyRaw == 0` | **Fuori scope**, ma registrato: oggi ricevono `q = 0.10` per effetto dell'ordine di `QUANTILE_GRID`, e **non sono confinati in classe C** (dipendono da XYZ, non da ABC). Da valutare in un ciclo dedicato |
-| | Versione TimesFM effettivamente pinnata (Fase 0.0) | *da verificare all'inizio dei lavori: si pinna alla più recente collaudabile, non a "2.0.2" per inerzia* |
-| | Revision HF effettivamente pinnata (Fase 0.0) | *da verificare: se ne è uscita una nuova, si pinna comunque quella attuale e la nuova si valuta a parte* |
+| 2026-08-27 | Versione TimesFM effettivamente pinnata (Fase 0.0) | **`v2.0.2`, confermata.** `git ls-remote --tags` non mostra tag più recenti (ultimi: `v1.2.1`, `v1.2.6`, `v2.0.1`, `v2.0.2`): nessuna patch, minor o major nuova. Vale la riga 1 della tabella di decisione, l'analisi di § 1.2 resta valida così com'è e non serve rifare la verifica di equivalenza |
+| 2026-08-27 | Revision HF effettivamente pinnata (Fase 0.0) | **`1d952420fba87f3c6dee4f240de0f1a0fbc790e3`, invariata.** `main` su HuggingFace punta ancora a questa revision: nessun nuovo checkpoint, nessuna valutazione separata da aprire |
 | 2026-08-27 | Durata misurata di una run completa | **5 m 09 s** su 571 SKU (RTX 2070 SUPER). Di cui backtest 190,9 s e forecast 94,4 s, entrambi **inferenza al ~98 %**: la grid search in Python costa 3,5 s. Proiezione a batch 32: **~40 s**. Dettagli in § 10.0.1 |
 | | Valore finale di `INFERENCE_BATCH_SIZE` | *da confermare dopo T4/T5* |
+| 2026-08-27 | Fase 0 (0.0 + 0.1) | **Chiusa.** Clone locale `./timesfm` ricreato pinnato su `v2.0.2` in sparse checkout (`--filter=blob:none --sparse` + `sparse-checkout set src`); entrambi i criteri di uscita verificati. `forecast_lib/` e notebook non toccati |
 | | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
 
