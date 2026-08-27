@@ -277,20 +277,20 @@ committati come blob reali, non come pointer. Verificato sul campo (git 2.55, gi
 ### Fase 1 — Performance e robustezza dell'inferenza *(~6 h)*
 
 #### 1.0 Modulo A (prerequisito)
-- [ ] Inserire il blocco parametri di § 4. Senza, la Fase 1.6 rompe il notebook.
+- [x] Inserire il blocco parametri di § 4. Senza, la Fase 1.6 rompe il notebook.
 
 #### 1.1 `forecast_lib/model.py` — `setup_timesfm()`
-- [ ] Nuovi parametri keyword-only: `batch_size=32`, `model_revision=None`.
+- [x] Nuovi parametri keyword-only: `batch_size=32`, `model_revision=None`.
       *(`model_id` esiste già, `model.py:35`. `expected_version` arriva in Fase 2, dove viene
       usato: aggiungerlo qui lo lascerebbe accettato e ignorato.)*
-- [ ] `per_core_batch_size=batch_size` in `ForecastConfig(...)`; `revision=model_revision` in
+- [x] `per_core_batch_size=batch_size` in `ForecastConfig(...)`; `revision=model_revision` in
       `from_pretrained(...)`.
-- [ ] Rimuovere il ramo morto `model.compile()` senza argomenti (`model.py:138`): la classe
+- [x] Rimuovere il ramo morto `model.compile()` senza argomenti (`model.py:138`): la classe
       concreta sovrascrive il default della base con `compile(self, forecast_config, **kwargs)`
       → `TypeError`. Se `ForecastConfig` non si trova → errore esplicito.
-- [ ] Rimuovere `os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")` (`model.py:54`):
+- [x] Rimuovere `os.environ.setdefault("HF_HUB_ENABLE_HF_TRANSFER", "1")` (`model.py:54`):
       con `huggingface_hub` 1.x (nel `.venv`: 1.16.1) è inerte e produce `FutureWarning`.
-- [ ] **`import torch` resta lazy** (oggi `model.py:141`): la cella 1 importa `forecast_lib`
+- [x] **`import torch` resta lazy** (oggi `model.py:141`): la cella 1 importa `forecast_lib`
       **prima** del `!pip install torch` della cella 6.
 
 #### 1.2 Stato allegato al modello (niente cambio di firma)
@@ -299,14 +299,14 @@ committati come blob reali, non come pointer. Verificato sul campo (git 2.55, gi
 `model = fl_model.setup_timesfm(...)` e passano `model` a `run_backtest` e
 `forecast_all_skus_point`. Lo stato aggiuntivo viaggia come attributi `fl_`:
 
-- [ ] `model.fl_recompile(batch_size)` — closure che **riusa la `ForecastConfig` originale**,
+- [x] `model.fl_recompile(batch_size)` — closure che **riusa la `ForecastConfig` originale**,
       sostituendo solo `per_core_batch_size`. *Non* `dataclasses.replace(model.forecast_config, …)`:
       dopo `compile()` quella config ha `max_horizon = 128`, non 24.
       **`global_batch_size` è impostato solo dentro `compile()`**, quindi ogni cambio di batch
       (incluso il degrado di § 1.3) **deve** passare da qui.
-- [ ] `fl_batch_size`, `fl_degraded`, `fl_degraded_after_inference`, `fl_device`,
+- [x] `fl_batch_size`, `fl_degraded`, `fl_degraded_after_inference`, `fl_device`,
       `fl_model_revision`, `fl_inference_seconds`, `fl_pin_verified`.
-- [ ] **Risoluzione della revision dei pesi** (`fl_model_revision`): né `from_pretrained` né
+- [x] **Risoluzione della revision dei pesi** (`fl_model_revision`): né `from_pretrained` né
       `_from_pretrained` espongono il path dello snapshot. Va risolta a parte:
       `hf_hub_download(model_id, "config.json", revision=...)` prima del caricamento,
       estraendo l'hash dal path `snapshots/<hash>/`.
@@ -325,81 +325,81 @@ I chiamanti mantengono la semantica attuale: `forecast_all_skus_point` costruisc
 `(results, errors)` per SKU; `run_backtest` scarta gli SKU con `base_fc is None`.
 
 Livelli:
-- [ ] 1. batch pieno al `INFERENCE_BATCH_SIZE` corrente;
-- [ ] 2. su OOM (`torch.cuda.OutOfMemoryError` o `RuntimeError` con `out of memory`):
+- [x] 1. batch pieno al `INFERENCE_BATCH_SIZE` corrente;
+- [x] 2. su OOM (`torch.cuda.OutOfMemoryError` o `RuntimeError` con `out of memory`):
       degrado lungo la scala **`[N, max(1, N//4), 1]`** derivata da `INFERENCE_BATCH_SIZE`
       (con `N = 32` dà 32 → 8 → 1), un livello alla volta, via `fl_recompile`.
       *Motivo: le due chiamate reali passano tutte le serie insieme (`model.py:203`,
       `backtest.py:208`) e TimesFM le spezza internamente. Cadere direttamente a 1 butta via
       ~40x quando spesso basta un livello intermedio. La scala è derivata, non costante,
       perché `INFERENCE_BATCH_SIZE` è configurabile.*
-- [ ] 3. su qualunque altro fallimento: **prima degradare a batch 1**, poi loop per-input.
+- [x] 3. su qualunque altro fallimento: **prima degradare a batch 1**, poi loop per-input.
       *Motivo: `forecast()` padda ogni chiamata a `global_batch_size` e con
       `force_flip_invariance=True` il decode gira due volte: un loop per-input al batch 32
       farebbe 32 serie di calcolo per ogni risultato utile.*
-- [ ] Log distinti per i tre casi.
-- [ ] Accumulare in `model.fl_inference_seconds` il tempo delle chiamate a `model.forecast`,
+- [x] Log distinti per i tre casi.
+- [x] Accumulare in `model.fl_inference_seconds` il tempo delle chiamate a `model.forecast`,
       **escluso lo smoke test** (`count_time=False`): a batch 32 lo smoke test padda 1 serie a
       32 e inquinerebbe l'unica metrica di performance del collaudo.
 
 **Quattro requisiti obbligatori, ciascuno per un difetto verificato:**
 
-- [ ] **(a) Passare sempre una copia della lista.** `timesfm_2p5_base.py:166-168` fa
+- [x] **(a) Passare sempre una copia della lista.** `timesfm_2p5_base.py:166-168` fa
       `inputs += [np.array([0.0]*3)] * (...)`: **muta in place la lista del chiamante**.
       La prima chiamata resta corretta (`return output_points[:num_inputs]` usa `num_inputs`
       catturato prima del padding), ma un **retry sulla stessa lista** restituisce righe
       fantasma (verificato: 5 elementi → 32, retry → 32 righe).
       → `model.forecast(horizon=..., inputs=list(inputs))`.
-- [ ] **(b) Liberare la memoria CUDA prima del retry.** Ritentare dentro l'`except` mantiene
+- [x] **(b) Liberare la memoria CUDA prima del retry.** Ritentare dentro l'`except` mantiene
       vivo `e.__traceback__` e con esso i frame del forward andato in OOM. → uscire
       dall'`except`, poi `gc.collect()` e `torch.cuda.empty_cache()`.
-- [ ] **(c) Degrado permanente per il run**, con `fl_degraded = True`.
+- [x] **(c) Degrado permanente per il run**, con `fl_degraded = True`.
       > **Il degrado NON rende il run coerente.** `run_backtest` chiama il modello una volta
       > per origine (`backtest.py:208`) e condivide l'istanza con la cella 8: se l'OOM scatta
       > all'origine 2, l'origine 1 è già stata calcolata al batch precedente. Il degrado evita
       > solo di alternare avanti e indietro. **Un run degradato a metà pipeline non è
       > consegnabile** e va rifatto con `INFERENCE_BATCH_SIZE` più basso.
-- [ ] **(d) Distinguere il degrado nello smoke test.** Se l'OOM scatta lì (§ 1.4), avviene
+- [x] **(d) Distinguere il degrado nello smoke test.** Se l'OOM scatta lì (§ 1.4), avviene
       **prima di qualunque inferenza reale**: il run gira uniformemente al batch degradato ed
       è **pienamente utilizzabile**. `fl_degraded_after_inference` resta `False` e l'avviso
       "rifare il run" **non** va emesso.
 
 #### 1.4 Smoke test
-- [ ] Gira **dopo** la compilazione al batch di produzione e **attraverso**
+- [x] Gira **dopo** la compilazione al batch di produzione e **attraverso**
       `forecast_batch_with_fallback(..., count_time=False)`. Con batch 32 e una sola serie
       attiva subito il ramo di padding: è un canary del percorso nuovo.
-- [ ] Verifica che l'output sia sensato (shape attesa, valori finiti), non solo che non sollevi.
-- [ ] **Solleva** se fallisce dopo tutti i livelli di fallback. Cambio di comportamento voluto,
+- [x] Verifica che l'output sia sensato (shape attesa, valori finiti), non solo che non sollevi.
+- [x] **Solleva** se fallisce dopo tutti i livelli di fallback. Cambio di comportamento voluto,
       da annotare nel README.
 
 #### 1.5 `forecast_lib/backtest.py`
-- [ ] Sostituire il `try/except` di righe 207-227 con `forecast_batch_with_fallback`,
+- [x] Sostituire il `try/except` di righe 207-227 con `forecast_batch_with_fallback`,
       semantica a valle invariata (SKU senza forecast scartati alla riga 230).
-- [ ] **Aggiungere `BestQuantileRaw` e `BestAccuracyRaw`** al `results_list`
+- [x] **Aggiungere `BestQuantileRaw` e `BestAccuracyRaw`** al `results_list`
       (`backtest.py:351-356`). Oggi `_apply_shrinkage` sovrascrive in place **entrambi**:
       `r["BestQuantile"] = q_shrunk` (`:380`) e `r["BestAccuracy"] = np.mean(accs)` (`:396`,
       cioè l'accuratezza **al `q` shrinkato**, non il massimo sulla griglia). Senza i valori
       grezzi non è possibile distinguere un flip individuale dallo spostamento della mediana,
       né leggere il KPI come "massimo su griglia".
-- [ ] **Esporre `q_global`** (oggi solo `print`ato, `backtest.py:104`) **senza cambiare la
+- [x] **Esporre `q_global`** (oggi solo `print`ato, `backtest.py:104`) **senza cambiare la
       firma** — `run_backtest` termina con `return pd.DataFrame(results_list)` e la cella 7 fa
       `df_backtest_results = fl_backtest.run_backtest(...)`: una tupla romperebbe il call site.
       → `df.attrs["q_global"]` **e** una colonna costante nel CSV di audit (`df.attrs` non
       sopravvive a `to_csv`, e la diagnostica di § 9 lo richiede).
       Casi in cui **non esiste**, da gestire: `SHRINKAGE_ENABLED = False`, `results_list`
       vuoto, `RUN_BACKTEST = False`.
-- [ ] Conteggio degli SKU esclusi dal backtest e degli SKU con **`BestAccuracyRaw == 0`**
+- [x] Conteggio degli SKU esclusi dal backtest e degli SKU con **`BestAccuracyRaw == 0`**
       (§ 9.1: lì il `q` è un artefatto dell'ordine di iterazione, non una scelta del modello).
-- [ ] Nessuna modifica a grid search, shrinkage o calibrazione.
+- [x] Nessuna modifica a grid search, shrinkage o calibrazione.
 
 #### 1.6 `forecast_lib/export.py`, notebook celle 6, 7, 12
-- [ ] Cella 6: `batch_size=INFERENCE_BATCH_SIZE`, `model_id=TIMESFM_MODEL_ID`,
+- [x] Cella 6: `batch_size=INFERENCE_BATCH_SIZE`, `model_id=TIMESFM_MODEL_ID`,
       `model_revision=TIMESFM_MODEL_REVISION`. Firma di ritorno invariata (§ 1.2).
-- [ ] `save_excel(df, path)` → `save_excel(df, path, run_info=None)`. Oggi è
+- [x] `save_excel(df, path)` → `save_excel(df, path, run_info=None)`. Oggi è
       `df.to_excel(path, index=False)` (`export.py:105-107`), foglio unico: per un secondo
       foglio serve `pd.ExcelWriter`. **Vincolo: la tabella dati resta il PRIMO foglio** —
       questo stesso progetto legge l'input con `list(all_sheets.keys())[0]` (cella 2).
-- [ ] Foglio "Run info" — emesso se `EXPORT_AUDIT` **oppure** se `fl_pin_verified is False`
+- [x] Foglio "Run info" — emesso se `EXPORT_AUDIT` **oppure** se `fl_pin_verified is False`
       (un run non pinnato deve lasciare traccia comunque): data/ora,
       `forecast_lib.__version__`, `TIMESFM_VERSION` risolta, `fl_pin_verified`, revision pesi
       risolta, **device** — con `torch.cuda.get_device_name()`, non solo `"cuda"/"cpu"`:
@@ -412,14 +412,14 @@ Livelli:
       quindi va gestito a `None` come `q_global`),
       `BUSINESS_ADJUSTMENT_FACTOR`, `RUN_BACKTEST`, `N_BACKTEST_ORIGINS`, `SHRINKAGE_ENABLED`,
       `q_global`, `ROUNDING_MODE`, n. SKU esclusi dal backtest, n. SKU con `BestAccuracyRaw == 0`.
-- [ ] **Avviso di fine run**, indipendente da `EXPORT_AUDIT`, se `fl_pin_verified is False`
+- [x] **Avviso di fine run**, indipendente da `EXPORT_AUDIT`, se `fl_pin_verified is False`
       o `fl_degraded_after_inference is True`. La cella 6 scorre via nel log; l'ultima cella no.
-- [ ] Due CSV di audit in `OUTPUT_DIR` se `EXPORT_AUDIT`. Naming coerente con la cella 12 —
+- [x] Due CSV di audit in `OUTPUT_DIR` se `EXPORT_AUDIT`. Naming coerente con la cella 12 —
       `OUTPUT_SUFFIX` **inizia con uno spazio**, quindi comporre come
       `f"{OUTPUT_FILE_BASE} backtest{OUTPUT_SUFFIX}.csv"`: `df_backtest_results`
       (`BestQuantile`, `BestQuantileRaw`, `BestAccuracy`, `BestAccuracyRaw`, `TotalWeight`,
       `q_global`) e `fc_errors`.
-- [ ] **Cella 12**: in Colab `files.download()` anche per i due CSV (`/content/output/` è
+- [x] **Cella 12**: in Colab `files.download()` anche per i due CSV (`/content/output/` è
       effimero: senza download T5 non può verificare i criteri di § 9).
 
 ---
@@ -458,34 +458,34 @@ I **check informativi** non sollevano mai, hanno timeout ≤ 5 s e girano con
 6. **verifica finale**: `HEAD == refs/tags/<tag>^{commit}` **e** `status --porcelain` vuoto.
    Con `strict=True` → **solleva**; con `strict=False` → avviso rumoroso e
    `pin_verified=False`, propagato a "Run info" e all'avviso di fine run (§ 1.6).
-- [ ] Fallback di clone se `--filter=blob:none` non è supportato:
+- [x] Fallback di clone se `--filter=blob:none` non è supportato:
       `-c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false`
       (verificato pulito 3/3). Il criterio di accettazione resta il punto 6.
 
 ##### 2.1.2 Check informativi (non bloccanti)
-- [ ] `timesfm_tag(version)` — **unico punto** in cui si aggiunge il prefisso `v`.
-- [ ] `latest_timesfm_tag(repo_url)`, `latest_lib_version(repo_url)` — `git ls-remote --tags`.
+- [x] `timesfm_tag(version)` — **unico punto** in cui si aggiunge il prefisso `v`.
+- [x] `latest_timesfm_tag(repo_url)`, `latest_lib_version(repo_url)` — `git ls-remote --tags`.
       `latest_lib_version` **chiude il caso ZIP**, che `EXPECTED_FORECAST_LIB_VERSION` da solo
       non copre (uno ZIP è coerente al proprio interno). *(Niente fallback HTTP: `git` è un
       requisito duro della pipeline — senza, `ensure_timesfm_checkout` non può clonare — quindi
       sarebbe codice morto. Va però documentato nel README, che oggi autorizza lo ZIP senza dirlo.)*
-- [ ] `compare_versions(a, b)` — parsing numerico dei segmenti (`2.0.10 > 2.0.9`), tollera il
+- [x] `compare_versions(a, b)` — parsing numerico dei segmenti (`2.0.10 > 2.0.9`), tollera il
       prefisso `v`, **gestisce numero di segmenti variabile** (`v1.2` accanto a `v1.4.1`: i
       tag reali del repo sono così), non solleva su input malformato. Il parsing di
       `ls-remote` deve **deduplicare le righe `refs/tags/<t>^{}`** (tag misti annotati/leggeri).
-- [ ] `local_repo_status(repo_path, expected_remote)` — `behind`, `ahead`, `dirty`, `branch`.
+- [x] `local_repo_status(repo_path, expected_remote)` — `behind`, `ahead`, `dirty`, `branch`.
       **Prima di qualunque `fetch`, verificare `git remote get-url origin == expected_remote`.**
       Mai `pull`, `merge`, `checkout`.
-- [ ] `check_library_version(actual, expected) -> str | None` — confronto puro, **due
+- [x] `check_library_version(actual, expected) -> str | None` — confronto puro, **due
       messaggi distinti**: `actual < expected` → *"forecast_lib è più vecchia di quanto il
       notebook si aspetti: aggiorna il codice"*; `actual > expected` → *"il notebook è più
       vecchio del codice: riscarica il notebook aggiornato"*.
 
 ##### 2.1.3 Due orchestratori distinti
-- [ ] `check_project_updates(*, colab, enabled, repo_path, repo_url, lib_version,
+- [x] `check_project_updates(*, colab, enabled, repo_path, repo_url, lib_version,
       expected_lib_version)` → **cella 1**. `check_library_version` gira sempre (nessun I/O);
       `latest_lib_version` se `enabled`, **anche in Colab**; `local_repo_status` solo se non-Colab.
-- [ ] `check_timesfm_update(*, enabled, repo_url, current_version)` → **cella 6**, dopo
+- [x] `check_timesfm_update(*, enabled, repo_url, current_version)` → **cella 6**, dopo
       `ensure_timesfm_checkout`. **Attivo anche in Colab**: è lì che il pin rischia di
       invecchiare inosservato, essendo Colab la modalità principale.
 
@@ -494,19 +494,19 @@ In tutti i casi degradati: **`None` + avviso, mai eccezione** — unica eccezion
 `ensure_timesfm_checkout` in modalità strict.
 
 #### 2.2 `forecast_lib/model.py` — loader esplicito
-- [ ] `ensure_timesfm_checkout(...)` al posto del clone condizionale; nuovi parametri
+- [x] `ensure_timesfm_checkout(...)` al posto del clone condizionale; nuovi parametri
       `expected_version`, `repo_url`, `pin_strict`.
-- [ ] Path diretto `src/timesfm/timesfm_2p5/timesfm_2p5_torch.py` al posto del glob; errore
+- [x] Path diretto `src/timesfm/timesfm_2p5/timesfm_2p5_torch.py` al posto del glob; errore
       esplicito se assente.
-- [ ] `getattr(torch_mod, "TimesFM_2p5_200M_torch")` al posto dell'introspezione; errore
+- [x] `getattr(torch_mod, "TimesFM_2p5_200M_torch")` al posto dell'introspezione; errore
       esplicito se assente. *(Verificato presente a `v2.0.2`, `timesfm_2p5_torch.py:259`.)*
-- [ ] Aggiornare il docstring del modulo.
+- [x] Aggiornare il docstring del modulo.
 
 #### 2.3 Notebook — cella 1
-- [ ] Aggiungere `versioning` alla `from forecast_lib import (...)` — senza,
+- [x] Aggiungere `versioning` alla `from forecast_lib import (...)` — senza,
       `versioning.check_project_updates(...)` è un `NameError`. E alla mappa dei moduli nel
       docstring di `__init__.py`. Bump `__version__ = "1.6.0"`.
-- [ ] **Allineamento del branch in Colab.** Il clone è `--depth 1`, che implica
+- [x] **Allineamento del branch in Colab.** Il clone è `--depth 1`, che implica
       `--single-branch`: `remote.origin.fetch` è `+refs/heads/main:refs/remotes/origin/main`,
       quindi né `git pull` né `fetch`+`checkout` semplici funzionano per un altro branch
       (verificato: `pathspec did not match`; e dopo un `checkout -B … FETCH_HEAD` il branch
@@ -523,23 +523,23 @@ In tutti i casi degradati: **`None` + avviso, mai eccezione** — unica eccezion
       ```
       **Non** usare il ramo alternativo "se il branch è già quello giusto, basta `git pull`":
       è proprio quello che fallisce in silenzio e farebbe collaudare a T5 il codice vecchio.
-- [ ] `fetch`/`checkout` **non bloccanti** (niente `check=True`) ma con **esito verificato e
+- [x] `fetch`/`checkout` **non bloccanti** (niente `check=True`) ma con **esito verificato e
       stampato**: se falliscono, dirlo a voce alta, perché il notebook proseguirà con il
       codice della sessione precedente. Il `clone` iniziale resta bloccante, con messaggio
       esplicito se il branch non esiste.
-- [ ] Stampare l'avviso `REPO_BRANCH != "main"` **prima** del clone.
-- [ ] **Documentare che serve il riavvio del kernel**: dopo un aggiornamento i moduli già
+- [x] Stampare l'avviso `REPO_BRANCH != "main"` **prima** del clone.
+- [x] **Documentare che serve il riavvio del kernel**: dopo un aggiornamento i moduli già
       importati restano in `sys.modules`.
-- [ ] Chiamare `versioning.check_project_updates(...)`.
+- [x] Chiamare `versioning.check_project_updates(...)`.
 
 ---
 
 ### Fase 3 — Igiene dipendenze *(~20 min)*
 
-- [ ] Cella 6: `!pip install -q safetensors huggingface_hub torch` (aggiunto `safetensors`,
+- [x] Cella 6: `!pip install -q safetensors huggingface_hub torch` (aggiunto `safetensors`,
       rimosso `einops`).
-- [ ] Rimuovere `einops` da `requirements.txt` e `requirements-nvidia.txt`.
-- [ ] Non toccare i pin di `torch` (2.6.0 compatibile: TimesFM chiede `torch>=2.0.0`).
+- [x] Rimuovere `einops` da `requirements.txt` e `requirements-nvidia.txt`.
+- [x] Non toccare i pin di `torch` (2.6.0 compatibile: TimesFM chiede `torch>=2.0.0`).
 
 ---
 
@@ -1077,6 +1077,11 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Durata misurata di una run completa | **5 m 09 s** su 571 SKU (RTX 2070 SUPER). Di cui backtest 190,9 s e forecast 94,4 s, entrambi **inferenza al ~98 %**: la grid search in Python costa 3,5 s. Proiezione a batch 32: **~40 s**. Dettagli in § 10.0.1 |
 | | Valore finale di `INFERENCE_BATCH_SIZE` | *da confermare dopo T4/T5* |
 | 2026-08-27 | Fase 0 (0.0 + 0.1) | **Chiusa.** Clone locale `./timesfm` ricreato pinnato su `v2.0.2` in sparse checkout (`--filter=blob:none --sparse` + `sparse-checkout set src`); entrambi i criteri di uscita verificati. `forecast_lib/` e notebook non toccati |
+| 2026-08-27 | Fasi 1-3 | **Chiuse.** Modulo A (blocco parametri), `model.py` (loader esplicito, batch size, revision pinnata, attributi `fl_`, `forecast_batch_with_fallback`, smoke test bloccante), `backtest.py` (colonne `*Raw`, `q_global` in `attrs`, conteggi), `export.py` (`save_excel(run_info=)`, `build_run_info`, `save_audit_csvs`), `versioning.py` (nuovo), celle 0/1/6/7/12, igiene dipendenze. `metrics.py`, `calibration.py`, `inventory.py`, `rounding.py`, `preprocessing.py` non toccati. Test della Fase 4 non ancora scritti |
+| 2026-08-27 | Nome del parametro dell'URL TimesFM | **Mantenuto `timesfm_repo_url`** (nome gia' esistente in `setup_timesfm`) invece del `repo_url` citato in § 2.2: e' keyword-only, e cambiarlo avrebbe toccato un call site senza guadagno |
+| 2026-08-27 | Attributo `fl_batch_size_initial` | **Aggiunto** agli attributi di § 1.2: la scala di degrado `[N, N//4, 1]` e' derivata da `INFERENCE_BATCH_SIZE`, e dopo un degrado permanente `fl_batch_size` non e' piu' quel valore. I livelli gia' superati vengono scartati, cosi' il degrado non risale mai |
+| 2026-08-27 | Come si riconosce lo smoke test in `forecast_batch_with_fallback` | **`count_time=False`**: e' l'unico chiamante che lo passa, e i due requisiti di § 1.3 (escludere il tempo, non alzare `fl_degraded_after_inference`) coincidono esattamente con quel caso. Nessun secondo parametro |
+| 2026-08-27 | Composizione del foglio "Run info" e dei CSV | **In `export.py`** (`build_run_info`, `run_info_to_frame`, `save_audit_csvs`), non nella cella 12: la cella resta di sola orchestrazione e i campi diventano collaudabili con pytest. Il primo foglio conserva il nome `"Sheet1"` che pandas gli da' oggi |
 | | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
 

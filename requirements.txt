@@ -8,7 +8,6 @@ pandas
 numpy
 scipy
 openpyxl
-einops
 safetensors
 huggingface_hub
 jupyter

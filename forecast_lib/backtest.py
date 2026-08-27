@@ -25,6 +25,7 @@ import pandas as pd
 
 from .calibration import calculate_seasonality_local, theil_sen_log_trend
 from .metrics import accuracy_weighted
+from .model import forecast_batch_with_fallback
 from .rounding import round_to_pack
 
 
@@ -50,8 +51,21 @@ def run_backtest(
     verbose=False,
 ):
     """
-    Esegue il backtest rolling-origin e restituisce DataFrame con
-    [SKU, BestQuantile, BestAccuracy, TotalWeight] per ogni SKU valido.
+    Esegue il backtest rolling-origin e restituisce un DataFrame con
+    [SKU, BestQuantile, BestQuantileRaw, BestAccuracy, BestAccuracyRaw,
+    TotalWeight] per ogni SKU valido.
+
+    Le colonne *Raw contengono il risultato della grid search prima dello
+    shrinkage; senza shrinkage coincidono con le altre due.
+
+    Il DataFrame porta in `df.attrs` le grandezze di run che non entrano nello
+    schema per-SKU: `q_global` (mediana dello shrinkage, None se non calcolata),
+    `n_backtest_skus`, `n_skus_excluded` (SKU con storico ma senza risultato di
+    backtest: nel Modulo H ricadono su q = 0.5) e `n_skus_zero_accuracy` (SKU con
+    BestAccuracyRaw == 0, dove il q scelto e' un artefatto dell'ordine di
+    iterazione della griglia, non una scelta del modello).
+    `attrs` non sopravvive a `to_csv`: chi esporta deve materializzare q_global
+    come colonna.
 
     Parametri (tutti keyword-only, dal Modulo A del notebook):
         model:                istanza TimesFM
@@ -92,6 +106,7 @@ def run_backtest(
     )
 
     # --- 6. Shrinkage opzionale ---
+    q_global = None
     if shrinkage_enabled and results_list:
         print("Applicazione shrinkage dello scaling factor...")
         q_global = _apply_shrinkage(
@@ -105,15 +120,33 @@ def run_backtest(
         print(f"  Shrinkage applicato a {len(results_list)} SKU")
 
     # --- 7. Costruzione DataFrame risultato ---
-    return pd.DataFrame(results_list)
+    df = pd.DataFrame(results_list)
+
+    n_excluded = max(0, len(sku_series) - len(results_list))
+    n_zero_acc = sum(1 for r in results_list if not r["BestAccuracyRaw"] > 0)
+    print(f"  SKU esclusi dal backtest: {n_excluded} (useranno q = 0.5 nel Modulo H)")
+    print(f"  SKU con accuratezza nulla su tutta la griglia: {n_zero_acc} "
+          f"(il loro q e' un artefatto dell'ordine della griglia)")
+
+    df.attrs["q_global"] = q_global
+    df.attrs["n_backtest_skus"] = len(results_list)
+    df.attrs["n_skus_excluded"] = n_excluded
+    df.attrs["n_skus_zero_accuracy"] = n_zero_acc
+    return df
 
 
 def empty_backtest_results():
     """Restituisce un DataFrame vuoto con lo schema dei risultati di backtest.
     Usato dal notebook quando RUN_BACKTEST = False."""
-    return pd.DataFrame(
-        columns=["SKU", "BestQuantile", "BestAccuracy", "TotalWeight"]
+    df = pd.DataFrame(
+        columns=["SKU", "BestQuantile", "BestQuantileRaw",
+                 "BestAccuracy", "BestAccuracyRaw", "TotalWeight"]
     )
+    df.attrs["q_global"] = None
+    df.attrs["n_backtest_skus"] = 0
+    df.attrs["n_skus_excluded"] = 0
+    df.attrs["n_skus_zero_accuracy"] = 0
+    return df
 
 
 # ----------------------------------------------------------------------
@@ -204,27 +237,12 @@ def _prepare_origins(
         bt_skus = list(origin_prep.keys())
         bt_inputs = [origin_prep[s]["hist_np"] for s in bt_skus]
 
-        try:
-            all_fc, _ = model.forecast(horizon=horizon_backtest, inputs=bt_inputs)
-            for i, sku in enumerate(bt_skus):
-                fc = all_fc[i]
-                if hasattr(fc, "cpu"):
-                    fc = fc.cpu().numpy()
-                origin_prep[sku]["base_fc"] = np.array(fc, dtype=float)
-        except Exception as e:
-            print(f"  Batch fallito ({e}), fallback a forecast singolo...")
-            for sku in bt_skus:
-                try:
-                    fc, _ = model.forecast(
-                        horizon=horizon_backtest,
-                        inputs=[origin_prep[sku]["hist_np"]],
-                    )
-                    fc = fc[0]
-                    if hasattr(fc, "cpu"):
-                        fc = fc.cpu().numpy()
-                    origin_prep[sku]["base_fc"] = np.array(fc, dtype=float)
-                except Exception:
-                    origin_prep[sku]["base_fc"] = None
+        all_fc, _ = forecast_batch_with_fallback(model, bt_inputs, horizon_backtest)
+        for i, sku in enumerate(bt_skus):
+            fc = all_fc[i]
+            origin_prep[sku]["base_fc"] = (
+                np.array(fc, dtype=float) if fc is not None else None
+            )
 
         # Tieni solo SKU con forecast valido
         origin_prep = {s: p for s, p in origin_prep.items() if p.get("base_fc") is not None}
@@ -348,10 +366,17 @@ def _grid_search_cross_origin(*, origins_data, quantile_grid,
                     )
                     break
 
+        # I valori *Raw sono il risultato della grid search prima dello
+        # shrinkage, che sovrascrive in place SIA BestQuantile SIA BestAccuracy
+        # (quest'ultima con l'accuratezza al q shrinkato, non con il massimo
+        # sulla griglia). Senza i grezzi non e' possibile distinguere un flip
+        # individuale dallo spostamento della mediana globale.
         results_list.append({
             "SKU": sku,
             "BestQuantile": best_q,
+            "BestQuantileRaw": best_q,
             "BestAccuracy": best_accuracy,
+            "BestAccuracyRaw": best_accuracy,
             "TotalWeight": total_weight,
         })
 

@@ -6,12 +6,21 @@ locale) resta nel notebook. Qui vive solo la logica di:
   1. Pivot dello storico in formato wide
   2. Rinomina colonne forecast (prefisso 'f' per distinguerle dallo storico)
   3. Merge: metadati + inventario + storico + forecast
-  4. Salvataggio Excel
+  4. Salvataggio Excel (+ foglio "Run info" opzionale)
+  5. CSV di audit per ricostruire a posteriori un run
+
+Vincolo sull'ordine dei fogli: la tabella dati resta SEMPRE il primo foglio.
+Questo stesso progetto legge il file di input con `list(all_sheets.keys())[0]`,
+e non e' l'unico consumatore possibile.
 """
 
+import os
 import re
 
 import pandas as pd
+
+DATA_SHEET_NAME = "Sheet1"      # nome che pandas assegna di default: non cambiarlo
+RUN_INFO_SHEET_NAME = "Run info"
 
 
 def build_forecast_wide(df_fc_long, id_col):
@@ -102,6 +111,121 @@ def build_final_table(
     return out_final
 
 
-def save_excel(df, path):
-    """Salva il DataFrame in formato Excel (un solo foglio, indice escluso)."""
-    df.to_excel(path, index=False)
+def save_excel(df, path, run_info=None):
+    """Salva il DataFrame in formato Excel (indice escluso).
+
+    Con `run_info` (dict campo -> valore) aggiunge un SECONDO foglio "Run info".
+    La tabella dati resta il primo foglio in entrambi i casi.
+    """
+    if run_info is None:
+        df.to_excel(path, index=False)
+        return
+
+    with pd.ExcelWriter(path) as writer:
+        df.to_excel(writer, sheet_name=DATA_SHEET_NAME, index=False)
+        run_info_to_frame(run_info).to_excel(
+            writer, sheet_name=RUN_INFO_SHEET_NAME, index=False
+        )
+
+
+def run_info_to_frame(run_info):
+    """dict ordinato -> DataFrame a due colonne, pronto per il foglio."""
+    return pd.DataFrame(
+        {"Campo": list(run_info.keys()),
+         "Valore": [_as_cell(v) for v in run_info.values()]}
+    )
+
+
+def _as_cell(value):
+    """Valori non scrivibili come cella Excel -> stringa; None -> vuoto."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "si" if value else "no"
+    if isinstance(value, (int, float, str)):
+        return value
+    return str(value)
+
+
+def build_run_info(
+    *,
+    model=None,
+    timestamp=None,
+    lib_version=None,
+    timesfm_version=None,
+    model_id=None,
+    inference_batch_size=None,
+    business_adjustment_factor=None,
+    run_backtest=None,
+    n_backtest_origins=None,
+    shrinkage_enabled=None,
+    rounding_mode=None,
+    q_global=None,
+    kpi_motul=None,
+    n_backtest_skus=None,
+    n_skus_excluded=None,
+    n_skus_zero_accuracy=None,
+    n_forecast_errors=None,
+):
+    """Raccoglie i campi del foglio "Run info": tutto cio' che serve a
+    ricostruire a posteriori come e' stato prodotto un file di output.
+
+    Lo stato del modello viene letto dagli attributi `fl_*` attaccati da
+    `setup_timesfm`, quindi il chiamante deve passare solo i parametri del
+    Modulo A e i numeri calcolati dalla pipeline. `model=None` e' ammesso
+    (utile nei test): i campi corrispondenti restano vuoti.
+    """
+    fl = (lambda name, default=None: getattr(model, name, default))
+
+    return {
+        "Data e ora del run": timestamp,
+        "forecast_lib": lib_version,
+        "TimesFM (tag pinnato)": fl("fl_timesfm_tag", timesfm_version),
+        "Pin TimesFM verificato": fl("fl_pin_verified"),
+        "Modello HuggingFace": model_id,
+        "Revision pesi": fl("fl_model_revision"),
+        "Device": fl("fl_device"),
+        "INFERENCE_BATCH_SIZE": inference_batch_size,
+        "Batch size effettivo": fl("fl_batch_size"),
+        "global_batch_size": fl("global_batch_size"),
+        "Batch degradato durante il run": fl("fl_degraded"),
+        "Degrado dopo inferenza reale": fl("fl_degraded_after_inference"),
+        "Tempo di inferenza (s)": fl("fl_inference_seconds"),
+        "RUN_BACKTEST": run_backtest,
+        "N_BACKTEST_ORIGINS": n_backtest_origins,
+        "SHRINKAGE_ENABLED": shrinkage_enabled,
+        "q globale (mediana shrinkage)": q_global,
+        "KPI Motul pesato": kpi_motul,
+        "SKU con risultato di backtest": n_backtest_skus,
+        "SKU esclusi dal backtest": n_skus_excluded,
+        "SKU con accuratezza nulla": n_skus_zero_accuracy,
+        "SKU senza forecast": n_forecast_errors,
+        "BUSINESS_ADJUSTMENT_FACTOR": business_adjustment_factor,
+        "ROUNDING_MODE": rounding_mode,
+    }
+
+
+def save_audit_csvs(df_backtest_results, fc_errors, output_dir, file_base, suffix):
+    """Scrive i due CSV di audit accanto all'output Excel e ne restituisce i path.
+
+    Naming coerente con il file Excel: `suffix` inizia gia' con uno spazio.
+    `q_global` vive in `df.attrs`, che non sopravvive a `to_csv`: viene
+    materializzato come colonna costante.
+    """
+    paths = []
+
+    df_bt = df_backtest_results.copy()
+    if "q_global" not in df_bt.columns:
+        df_bt["q_global"] = df_backtest_results.attrs.get("q_global")
+    bt_path = os.path.join(output_dir, f"{file_base} backtest{suffix}.csv")
+    df_bt.to_csv(bt_path, index=False)
+    paths.append(bt_path)
+
+    df_err = pd.DataFrame(
+        {"SKU": list(fc_errors.keys()), "Errore": list(fc_errors.values())}
+    )
+    err_path = os.path.join(output_dir, f"{file_base} errori{suffix}.csv")
+    df_err.to_csv(err_path, index=False)
+    paths.append(err_path)
+
+    return paths
