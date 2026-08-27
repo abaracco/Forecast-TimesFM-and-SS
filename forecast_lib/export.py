@@ -154,6 +154,7 @@ def build_run_info(
     lib_version=None,
     timesfm_version=None,
     model_id=None,
+    model_revision=None,
     inference_batch_size=None,
     business_adjustment_factor=None,
     run_backtest=None,
@@ -174,6 +175,10 @@ def build_run_info(
     `setup_timesfm`, quindi il chiamante deve passare solo i parametri del
     Modulo A e i numeri calcolati dalla pipeline. `model=None` e' ammesso
     (utile nei test): i campi corrispondenti restano vuoti.
+
+    `model_revision` (il valore chiesto) e `fl_model_revision` (quello risolto)
+    sono due campi distinti di proposito: il secondo puo' mancare senza che il
+    run sia sbagliato, il primo no.
     """
     fl = (lambda name, default=None: getattr(model, name, default))
 
@@ -183,6 +188,13 @@ def build_run_info(
         "TimesFM (tag pinnato)": fl("fl_timesfm_tag", timesfm_version),
         "Pin TimesFM verificato": fl("fl_pin_verified"),
         "Modello HuggingFace": model_id,
+        # La revision RICHIESTA va registrata anche quando quella risolta manca:
+        # `_resolve_model_revision` e' diagnostica e non bloccante (torna None se
+        # si e' offline o se cambia il layout della cache di HuggingFace), e senza
+        # questo campo il file non conserverebbe alcuna traccia di quali pesi
+        # erano stati chiesti — cioe' proprio il dato su cui poggia la
+        # riproducibilita' del run.
+        "Revision pesi richiesta": model_revision,
         "Revision pesi": fl("fl_model_revision"),
         "Device": fl("fl_device"),
         "INFERENCE_BATCH_SIZE": inference_batch_size,

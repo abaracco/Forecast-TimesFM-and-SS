@@ -142,6 +142,20 @@ def compare_versions(a, b):
     return (pa > pb) - (pa < pb)
 
 
+_RELEASE_TAG_RE = re.compile(r"^v?\d+(\.\d+)*$")
+
+
+def _is_release_tag(tag):
+    """True solo per i tag di rilascio veri: `v2.0.2`, `1.6`, `v3`.
+
+    `_parse_version` e' volutamente tollerante (non deve mai sollevare su un tag
+    strano), quindi da solo leggerebbe `v2.1.0rc1` come 2.1.0 e lo proporrebbe
+    come aggiornamento disponibile. Un release candidate non e' una versione da
+    consigliare a chi sta cercando la produzione.
+    """
+    return bool(_RELEASE_TAG_RE.match(str(tag).strip()))
+
+
 def _parse_ls_remote_tags(stdout):
     """Estrae i nomi dei tag dall'output di `git ls-remote --tags`.
 
@@ -176,7 +190,7 @@ def _latest_tag(repo_url):
 
     best = None
     for tag in _parse_ls_remote_tags(res.stdout):
-        if _parse_version(tag) is None:
+        if not _is_release_tag(tag) or _parse_version(tag) is None:
             continue
         if best is None or compare_versions(tag, best) == 1:
             best = tag
@@ -259,7 +273,15 @@ def local_repo_status(repo_path, expected_remote):
         if not status["remote_matches"]:
             return status
 
-        res = _run_git(["fetch", "-q", "origin"], cwd=repo_path, timeout=CHECK_TIMEOUT)
+        # Il fetch ha 5 secondi: su una connessione lenta li supera senza che
+        # nulla sia rotto. Il timeout va assorbito QUI, non dall'except finale:
+        # li' diventerebbe `None`, che il chiamante legge come "non e' un
+        # repository git" e riporta all'utente come tale.
+        try:
+            res = _run_git(["fetch", "-q", "origin"], cwd=repo_path,
+                           timeout=CHECK_TIMEOUT)
+        except Exception:
+            return status
         if res.returncode != 0:
             return status
 

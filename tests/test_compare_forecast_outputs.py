@@ -8,11 +8,15 @@ Qui si verifica che ogni gate scatti quando deve e solo quando deve, su
 artefatti costruiti apposta.
 """
 
+import os
+
 import pandas as pd
 import pytest
 
 from forecast_lib.export import save_excel
 from tests.tools.compare_forecast_outputs import (
+    _fmt_cell,
+    _frames_equal,
     compare,
     load_run,
     main,
@@ -404,3 +408,80 @@ def test_load_run_rejects_a_file_whose_first_sheet_is_run_info(tmp_path):
 
     with pytest.raises(SystemExit, match="ordine dei fogli"):
         load_run("invertito", str(path))
+
+
+# ----------------------------------------------------------------------
+# Robustezza del confronto cella per cella
+# ----------------------------------------------------------------------
+
+def test_frames_equal_ignores_a_dtype_only_difference():
+    """`DataFrame.equals` confronta anche i dtype: la stessa colonna letta una
+    volta come int64 e una come float64 — capita a ogni giro di Excel, basta un
+    NaN in un'altra riga — risulterebbe diversa pur essendo identica."""
+    a = pd.DataFrame({"LT": [30, 60]}, index=["A", "B"], dtype="int64")
+    b = pd.DataFrame({"LT": [30.0, 60.0]}, index=["A", "B"], dtype="float64")
+    assert a.equals(b) is False
+    assert _frames_equal(a, b) is True
+
+
+def test_frames_equal_still_catches_the_last_bit():
+    a = pd.DataFrame({"f2026_01": [1.0]}, index=["A"])
+    b = pd.DataFrame({"f2026_01": [1.0 + 2 ** -50]}, index=["A"])
+    assert _frames_equal(a, b) is False
+
+
+def test_frames_equal_treats_two_nan_as_equal():
+    a = pd.DataFrame({"f2026_01": [float("nan"), 1.0]}, index=["A", "B"])
+    b = pd.DataFrame({"f2026_01": [float("nan"), 1.0]}, index=["A", "B"])
+    assert _frames_equal(a, b) is True
+
+
+def test_differences_on_text_columns_are_listed(tmp_path):
+    """ABC e XYZ sono stringhe: un confronto che le passa da `to_numeric` le
+    riduce a NaN e dichiara 'diversa' senza saper dire dove."""
+    rows = base_rows(abc={"A": "A", "B": "C", "C": "C"})
+    base, new = make_pair(tmp_path, new_rows=rows)
+    _ok, report, _gates = compare(base, new, mode="batch")
+    assert "B / ABC: 'B' -> 'C'" in report
+
+
+def test_numeric_cells_are_printed_as_numbers():
+    assert _fmt_cell(pd.Series([180.0]).iloc[0]) == "180.0"
+    assert _fmt_cell(pd.Series([3]).iloc[0]) == "3"
+    assert _fmt_cell("C") == "'C'"
+
+
+# ----------------------------------------------------------------------
+# CSV di audit degradati
+# ----------------------------------------------------------------------
+
+def test_an_empty_errors_csv_is_not_a_failure(tmp_path):
+    """Il caso normale e' proprio questo: quasi nessun run ha SKU falliti, e un
+    file vuoto non deve far morire il confronto dopo tutto il lavoro."""
+    paths = write_run(tmp_path, "a", rows=base_rows(), backtest=base_backtest())
+    empty = tmp_path / "vuoto.csv"
+    empty.write_text(os.linesep, encoding="utf-8")
+
+    run = load_run("a", paths["xlsx_path"], paths["backtest_csv"], str(empty))
+    assert run.error_skus == set()
+
+
+def test_an_errors_csv_with_only_the_header_is_read_as_no_errors(tmp_path):
+    paths = write_run(tmp_path, "a", rows=base_rows(), backtest=base_backtest())
+    header_only = tmp_path / "solo_intestazione.csv"
+    header_only.write_text("SKU,Errore" + os.linesep, encoding="utf-8")
+
+    run = load_run("a", paths["xlsx_path"], paths["backtest_csv"], str(header_only))
+    assert run.error_skus == set()
+
+
+def test_two_runs_without_failed_skus_pass_g2(tmp_path):
+    base_paths = write_run(tmp_path, "a", rows=base_rows(),
+                           backtest=base_backtest(), errors=[])
+    new_paths = write_run(tmp_path, "b", rows=base_rows(),
+                          backtest=base_backtest(), errors=[])
+    base, new = load_run("a", **base_paths), load_run("b", **new_paths)
+
+    _ok, report, gates = compare(base, new, mode="batch")
+    assert gates_by_name(gates)["G2"].passed is True
+    assert "SKU senza forecast: identici (0)" in report

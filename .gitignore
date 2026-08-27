@@ -46,6 +46,13 @@ __pycache__/
 venv/
 .venv/
 timesfm/
+# Residui dello swap di ensure_timesfm_checkout: la riclonazione avviene in una
+# directory temporanea accanto a ./timesfm, e se la pulizia fallisce (su Windows
+# i .pack/.idx sono read-only) restano qui. Non ignorarli farebbe risultare il
+# repository "sporco" e il notebook avviserebbe, a ogni avvio, che il codice in
+# esecuzione non corrisponde ad alcuna versione pubblicata.
+.timesfm_tmp_*/
+timesfm.old_*/
 .pytest_cache/
 
 # ─── Log e file di debug ───────────────────────────────────────────────────

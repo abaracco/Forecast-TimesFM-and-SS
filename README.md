@@ -261,7 +261,7 @@ Con `EXPORT_AUDIT = True` (default) il file Excel contiene un **secondo foglio "
 
 | Artefatto | Contenuto |
 |---|---|
-| Foglio **"Run info"** | Data/ora, versione di `forecast_lib`, tag TimesFM e **esito della verifica del pin**, revision dei pesi risolta, **device** (con il modello di GPU), `INFERENCE_BATCH_SIZE` richiesto e batch size effettivo, flag di degrado, tempo di inferenza, KPI Motul, `q_global`, conteggi degli SKU e i parametri del Modulo A |
+| Foglio **"Run info"** | Data/ora, versione di `forecast_lib`, tag TimesFM e **esito della verifica del pin**, revision dei pesi **richiesta e risolta** (la seconda può mancare se si è offline, la prima no: è il dato su cui poggia la riproducibilità), **device** (con il modello di GPU), `INFERENCE_BATCH_SIZE` richiesto e batch size effettivo, flag di degrado, tempo di inferenza, KPI Motul, `q_global`, conteggi degli SKU e i parametri del Modulo A |
 | `... backtest ....csv` | Il risultato per SKU del backtest: `BestQuantile`, `BestQuantileRaw`, `BestAccuracy`, `BestAccuracyRaw`, `TotalWeight` e `q_global` come colonna costante |
 | `... errori ....csv` | Gli SKU per cui il forecast non è stato prodotto, con il messaggio d'errore |
 
@@ -412,7 +412,9 @@ Due flag lo registrano, ed è importante distinguerli:
 | `Batch degradato durante il run` | Il batch size è stato abbassato in qualche momento |
 | **`Degrado dopo inferenza reale`** | Il degrado è avvenuto **dopo** che parte dei risultati era già stata calcolata a un batch diverso. **Il run NON è consegnabile**: va rifatto con `INFERENCE_BATCH_SIZE` più basso |
 
-La distinzione non è formale: un degrado durante lo smoke test iniziale avviene *prima* di qualunque inferenza reale, quindi il run gira uniformemente al batch più basso ed è pienamente utilizzabile. Un degrado a metà backtest, no. L'avviso compare in fondo all'ultima cella, non solo nel log del Modulo F che nel frattempo è scorso via.
+Se invece il degrado avviene prima che sia stato calcolato qualcosa — durante lo smoke test iniziale, oppure al primo tentativo della prima chiamata reale — il run gira uniformemente al batch più basso, resta pienamente utilizzabile e il secondo flag **non** si alza.
+
+La distinzione non è formale: rifare un run costa minuti, e segnalarne uno perfettamente coerente sarebbe uno spreco. L'avviso compare in fondo all'ultima cella, non solo nel log del Modulo F che nel frattempo è scorso via.
 
 #### Lo smoke test è bloccante
 

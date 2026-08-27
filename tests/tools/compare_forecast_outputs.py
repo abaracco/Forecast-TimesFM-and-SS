@@ -143,9 +143,18 @@ def load_run(label, xlsx_path, backtest_csv=None, errors_csv=None, id_col="SKU")
 
     errors = None
     if errors_csv:
-        err = pd.read_csv(errors_csv)
-        col = id_col if id_col in err.columns else err.columns[0]
-        errors = set(err[col].astype(str))
+        # Il caso normale e' un CSV senza righe: la maggior parte dei run non ha
+        # SKU falliti. Un file completamente vuoto (nessuna intestazione) fa
+        # sollevare pandas, ed e' un modo assurdo di far fallire un confronto.
+        try:
+            err = pd.read_csv(errors_csv)
+        except pd.errors.EmptyDataError:
+            err = None
+        if err is None or err.empty or not len(err.columns):
+            errors = set()
+        else:
+            col = id_col if id_col in err.columns else err.columns[0]
+            errors = set(err[col].astype(str))
 
     return Run(label, data, run_info, backtest, errors, id_col)
 
@@ -169,9 +178,42 @@ class Gate:
         return "PASS" if self.passed else "FAIL"
 
 
+def _cell_mismatches(a, b, limit=None):
+    """Celle diverse fra due frame gia' allineati, come (sku, colonna).
+
+    Confronto NaN-aware e **indifferente al dtype**: `DataFrame.equals` e' anche
+    un confronto di dtype, e due colonne con gli stessi valori letti una come
+    int64 e una come float64 (capita a ogni giro di Excel, basta un NaN in
+    un'altra riga) risulterebbero diverse pur essendo identiche. Sui float resta
+    un confronto esatto, quindi la severita' bit-a-bit di G1 non si perde.
+    """
+    out = []
+    for col in a.columns:
+        left, right = a[col], b[col]
+        equal = (left == right) | (left.isna() & right.isna())
+        for sku in a.index[~equal.fillna(False)]:
+            out.append((sku, col))
+            if limit is not None and len(out) >= limit:
+                return out
+    return out
+
+
 def _frames_equal(a, b):
-    """Confronto NaN-aware fra due DataFrame gia' allineati."""
-    return a.equals(b)
+    """True se due frame allineati hanno gli stessi valori (NaN inclusi)."""
+    if list(a.columns) != list(b.columns) or list(a.index) != list(b.index):
+        return False
+    return not _cell_mismatches(a, b, limit=1)
+
+
+def _fmt_cell(value):
+    """Scalari numpy stampati come numeri, non come `np.float64(180.0)`."""
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            value = item()
+        except (ValueError, TypeError):
+            pass
+    return repr(value)
 
 
 def gate_g1(base, new):
@@ -222,17 +264,11 @@ def gate_g1(base, new):
 
 
 def _first_differences(a, b, limit=10):
-    """Prime differenze cella per cella fra due frame allineati."""
-    out = []
-    for col in a.columns:
-        left = pd.to_numeric(a[col], errors="coerce")
-        right = pd.to_numeric(b[col], errors="coerce")
-        mismatch = ~((left == right) | (left.isna() & right.isna()))
-        for sku in a.index[mismatch]:
-            out.append(f"{sku} / {col}: {a.at[sku, col]!r} -> {b.at[sku, col]!r}")
-            if len(out) >= limit:
-                return out
-    return out
+    """Prime differenze cella per cella fra due frame allineati, formattate."""
+    return [
+        f"{sku} / {col}: {_fmt_cell(a.at[sku, col])} -> {_fmt_cell(b.at[sku, col])}"
+        for sku, col in _cell_mismatches(a, b, limit=limit)
+    ]
 
 
 def _compare_backtest_csv(base, new):
@@ -535,7 +571,8 @@ def deviation_tables(base, new, limit=20):
 
 RUN_INFO_FIELDS = [
     "Data e ora del run", "forecast_lib", "TimesFM (tag pinnato)",
-    "Pin TimesFM verificato", "Revision pesi", "Device", "INFERENCE_BATCH_SIZE",
+    "Pin TimesFM verificato", "Revision pesi richiesta", "Revision pesi",
+    "Device", "INFERENCE_BATCH_SIZE",
     "Batch size effettivo", "Batch degradato durante il run",
     "Degrado dopo inferenza reale", "Tempo di inferenza (s)", "RUN_BACKTEST",
     "N_BACKTEST_ORIGINS", "SHRINKAGE_ENABLED", "q globale (mediana shrinkage)",
@@ -655,6 +692,22 @@ def build_parser():
     return parser
 
 
+def _print(text):
+    """Stampa il report anche su una console non-UTF8.
+
+    Su Windows lo standard output ha spesso codifica cp1252, che non sa
+    rappresentare il 'Δ' delle tabelle di scostamento: senza questa rete il
+    confronto morirebbe con un UnicodeEncodeError DOPO aver fatto tutto il lavoro.
+    """
+    try:
+        print(text)
+        return
+    except UnicodeEncodeError:
+        pass
+    encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+    print(text.encode(encoding, errors="replace").decode(encoding, errors="replace"))
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
@@ -671,7 +724,7 @@ def main(argv=None):
 
     ok, report, _gates = compare(baseline, new, args.mode, thresholds)
 
-    print(report)
+    _print(report)
     if args.report:
         with open(args.report, "w", encoding="utf-8") as handle:
             handle.write(report + "\n")

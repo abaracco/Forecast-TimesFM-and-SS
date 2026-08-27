@@ -1006,17 +1006,17 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
 
 ## 11. Definition of Done
 
-- [ ] Fasi 0-5 implementate.
-- [ ] `pytest` verde — **e almeno un test nuovo importa `model.py`** (oggi nessun test lo
+- [x] Fasi 0-5 implementate.
+- [x] `pytest` verde — **e almeno un test nuovo importa `model.py`** (oggi nessun test lo
       tocca, quindi "pytest verde" da solo non prova nulla).
-- [ ] `pytest -m slow` verde: T1 (a-f) e T2b (tutti i casi).
-- [ ] T2 e T3 verdi, incluso il gruppo sui fallback e su `save_excel`.
+- [x] `pytest -m slow` verde: T1 (a-f) e T2b (tutti i casi).
+- [x] T2 e T3 verdi, incluso il gruppo sui fallback e su `save_excel`.
 - [ ] **T4.1 verde (G1 bit-identico)** — precondizione per valutare T4.2.
 - [ ] T4.2 eseguito, G2-G5 rispettati, report scritto con la diagnostica di § 9.2.
 - [ ] T4b eseguito, G2-G4 rispettati.
 - [ ] T5 eseguito su Colab (runtime GPU) da branch di lavoro, tutti i criteri soddisfatti;
       smoke run finale da `main` dopo il merge.
-- [ ] **Code review dell'intero diff**: aderenza al piano, gestione errori, e verifica che
+- [x] **Code review dell'intero diff**: aderenza al piano, gestione errori, e verifica che
       `metrics.py`, `calibration.py`, `inventory.py`, `rounding.py`, `preprocessing.py`
       risultino **non toccati**.
 - [ ] **Le correzioni applicate dopo la code review impongono di rieseguire `pytest` e T4.1**;
@@ -1029,9 +1029,9 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
       esplicita dell'utente registrata in § 12.** Una DoD tutta spuntata con
       `INFERENCE_BATCH_SIZE = 1` e senza questa riga sarebbe un piano "riuscito" che non
       consegna ciò che è stato chiesto.
-- [ ] § 12 compilato e **travasato in `CLAUDE.md`**.
-- [ ] `forecast_lib.__version__` == `EXPECTED_FORECAST_LIB_VERSION` == tag di rilascio.
-- [ ] `CLAUDE.md` e `README.md` aggiornati e coerenti col codice.
+- [x] § 12 compilato e **travasato in `CLAUDE.md`**.
+- [x] `forecast_lib.__version__` == `EXPECTED_FORECAST_LIB_VERSION` == tag di rilascio.
+- [x] `CLAUDE.md` e `README.md` aggiornati e coerenti col codice.
 - [ ] Merge su `main`, `REPO_BRANCH` riportato a `"main"`, tag di rilascio creato, commit con
       versione TimesFM pinnata e guadagno di performance misurato.
 - [ ] **Questo file cancellato dal repo.**
@@ -1087,6 +1087,15 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Doppio di TimesFM per T3 | **Modulo `tests/_fake_timesfm.py`** eseguito davvero da `spec_from_file_location`, non un mock di `importlib`: cosi' il percorso di import di `setup_timesfm` resta coperto. Il fake **muta la lista di input** come la libreria vera, altrimenti il requisito (a) di § 1.3 non sarebbe verificabile |
 | 2026-08-27 | Portata di T2b | **Un solo clone dal repo TimesFM vero** (canary dei filtri LFS, l'unica cosa che un finto remote non riproduce); tutti gli altri casi girano contro un repo locale creato con `git init`: offline, e i casi degradati (tag inesistente, remote diverso, clone fallito) diventano provocabili a comando |
 | 2026-08-27 | Fase 5 | **Chiusa.** `README.md`: sezione sui parametri del modello (pin, revision, batch size, avvisi, audit), nota sul degrado e sui due flag, smoke test bloccante, foglio "Run info" e CSV, `git` come dipendenza anche per lo ZIP, nota su offline e repo promisor, runbook "Aggiornare TimesFM", `einops` -> `safetensors`, scelte progettuali, struttura, sezione test con i due gruppi, riga v1.6.0. `CLAUDE.md`: layout con `versioning.py` e `tests/tools/`, Modulo F e J aggiornati, tutti i parametri di § 4 in "Key Configuration", cinque nuove "Important Design Decisions" e travaso del registro di § 12 |
+| 2026-08-27 | Code review dell'intero diff | **Eseguita** (`/code-review high` su `main...feat/timesfm-2.0.2`). `metrics.py`, `calibration.py`, `inventory.py`, `rounding.py`, `preprocessing.py` confermati **non toccati**. Sette rilievi: sei corretti, uno rimandato all'utente |
+| 2026-08-27 | `fl_degraded_after_inference` (rilievo 1) | **Corretto.** Il flag si alzava a ogni degrado con `count_time=True`, incluso quello al primo tentativo della prima chiamata reale — dove nulla e' ancora stato calcolato al batch alto e il run e' quindi uniforme. Dichiarava non consegnabile un run corretto, imponendo di rifarne uno da minuti. Ora serve `fl_has_produced_output`: almeno un'inferenza reale gia' riuscita |
+| 2026-08-27 | `_free_cuda_memory` nel loop per-input (rilievo 3) | **Corretto.** Era chiamata DENTRO l'`except`, contro la regola documentata dalla funzione stessa: li' l'eccezione tiene vivo il traceback e con esso i tensori che hanno esaurito la memoria, quindi `empty_cache()` non libera nulla proprio mentre si sta per chiedere la serie successiva |
+| 2026-08-27 | Timeout del fetch in `local_repo_status` (rilievo 4) | **Corretto.** `TimeoutExpired` finiva nell'`except` finale e diventava `None`, che il chiamante riporta come "non e' un repository git (installazione da ZIP?)" su un clone valido. Ora il timeout degrada ad `ahead`/`behind` non calcolabili |
+| 2026-08-27 | Residui dello swap (rilievo 5) | **Corretti in `.gitignore`.** `.timesfm_tmp_*` e `timesfm.old_*` non erano coperti da `timesfm/`: se la pulizia fallisce, il repository risulta sporco e il notebook avvisa a ogni avvio che il codice non corrisponde ad alcuna versione pubblicata |
+| 2026-08-27 | Revision dei pesi richiesta (rilievo 6) | **Corretto.** "Run info" registrava solo la revision *risolta*, che `_resolve_model_revision` lascia a `None` quando fallisce (offline, cambio di layout della cache): in quel caso il file non conservava traccia di quali pesi fossero stati chiesti. Aggiunto il campo "Revision pesi richiesta" e il passaggio di `TIMESFM_MODEL_REVISION` dalla cella 12 |
+| 2026-08-27 | Tag di pre-release (rilievo 7) | **Corretto.** `_parse_version` e' tollerante per costruzione e leggeva `v2.1.0rc1` come 2.1.0, proponendo un release candidate come aggiornamento. `_latest_tag` ora filtra con `_is_release_tag` |
+| 2026-08-27 | Degrado permanente su errore non-OOM (rilievo 2) | **NON applicato: decisione dell'utente.** Un fallimento non-OOM (es. una serie malformata) fa scendere a batch 1 per tutto il resto del run, ~40x piu' lento, mentre il batch size non c'entra con la causa. Correggerlo significherebbe pero' ripristinare il batch dopo il loop per-input, cioe' contraddire la scelta esplicita di § 1.3(c) e del registro ("degrado permanente per il run"). Il rilievo 1, corretto, toglie meta' del danno: se il fallimento e' sulla prima chiamata il run non viene piu' dichiarato non consegnabile |
+| 2026-08-27 | Difetti dell'utility di confronto trovati provandola su file veri | **Corretti tre.** CSV errori vuoto -> `EmptyDataError` (ed e' il caso normale: quasi nessun run ha SKU falliti); `Δ` nel report -> `UnicodeEncodeError` su console Windows cp1252, dopo aver fatto tutto il lavoro; colonne testuali (`ABC`, `XYZ`) dichiarate diverse con "0 differenze mostrate" perche' `pd.to_numeric` le riduceva a NaN. Il confronto e' ora anche indifferente al dtype (`DataFrame.equals` confronta i dtype: `int64` contro `float64` con gli stessi valori era un falso allarme garantito), restando esatto sui float |
 | | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
 

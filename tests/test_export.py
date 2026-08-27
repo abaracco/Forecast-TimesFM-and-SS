@@ -229,12 +229,14 @@ def test_build_run_info_reads_the_run_state_from_the_model():
         lib_version="1.6.0",
         timesfm_version="2.0.2",
         model_id="google/timesfm-2.5-200m-pytorch",
+        model_revision="1d952420fba87f3c6dee4f240de0f1a0fbc790e3",
         inference_batch_size=32,
         q_global=0.57,
         kpi_motul=0.6978,
     )
     assert info["Pin TimesFM verificato"] is False
     assert info["TimesFM (tag pinnato)"] == "v2.0.2"
+    assert info["Revision pesi richiesta"] == "1d952420fba87f3c6dee4f240de0f1a0fbc790e3"
     assert info["Revision pesi"] == "1d95242"
     assert info["Device"] == "cuda (RTX 2070 SUPER)"
     assert info["INFERENCE_BATCH_SIZE"] == 32
@@ -269,3 +271,17 @@ def test_build_run_info_is_writable_as_a_sheet(tmp_path):
     values = dict(zip(sheet["Campo"], sheet["Valore"]))
     assert values["RUN_BACKTEST"] == "si"
     assert values["SKU con risultato di backtest"] == 540
+
+
+def test_build_run_info_keeps_the_requested_revision_when_resolution_fails():
+    """`_resolve_model_revision` e' diagnostica e non bloccante: torna None se si
+    e' offline. Senza il campo "richiesta", il file non conserverebbe alcuna
+    traccia di quali pesi erano stati chiesti — il dato su cui poggia la
+    riproducibilita' del run."""
+    class _NoRevision(_FakeModel):
+        fl_model_revision = None
+
+    info = build_run_info(model=_NoRevision(), model_revision="1d952420fba")
+
+    assert info["Revision pesi"] is None
+    assert info["Revision pesi richiesta"] == "1d952420fba"

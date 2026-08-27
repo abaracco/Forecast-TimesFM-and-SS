@@ -191,6 +191,7 @@ def setup_timesfm(
     model.fl_batch_size_initial = batch_size
     model.fl_degraded = False
     model.fl_degraded_after_inference = False
+    model.fl_has_produced_output = False
     model.fl_device = device_label
     model.fl_model_revision = resolved_revision
     model.fl_inference_seconds = 0.0
@@ -333,6 +334,9 @@ def _forecast_once(model, inputs, horizon, count_time):
     `list(inputs)`: TimesFM padda la lista in place fino a global_batch_size
     (timesfm_2p5_base.py). La prima chiamata resta corretta, ma un retry sulla
     stessa lista restituirebbe righe fantasma.
+
+    A esito positivo marca `fl_has_produced_output`: e' quello che distingue un
+    degrado che lascia il run uniforme da uno che lo spacca in due.
     """
     start = time.perf_counter()
     try:
@@ -342,6 +346,8 @@ def _forecast_once(model, inputs, horizon, count_time):
             model.fl_inference_seconds = (
                 getattr(model, "fl_inference_seconds", 0.0) + time.perf_counter() - start
             )
+    if count_time:
+        model.fl_has_produced_output = True
     return output
 
 
@@ -351,14 +357,21 @@ def _to_array(value):
 
 
 def _degrade_to(model, batch_size, count_time):
-    """Ricompila a un batch size piu' basso e marca il run come degradato."""
+    """Ricompila a un batch size piu' basso e marca il run come degradato.
+
+    `fl_degraded_after_inference` — il flag che dichiara il run NON consegnabile
+    — si alza solo se almeno un'inferenza reale era gia' andata a buon fine a un
+    batch diverso: e' quello il caso in cui i risultati del run sono stati
+    calcolati a batch size diversi fra loro. Se il degrado avviene prima
+    (nello smoke test, `count_time=False`, oppure al primo tentativo della prima
+    chiamata reale, che non ha ancora prodotto nulla) il run gira uniformemente
+    al batch degradato ed e' pienamente utilizzabile: segnalarlo costringerebbe
+    a rifare per niente un run di minuti.
+    """
     print(f"  Degrado del batch size a {batch_size} e nuovo tentativo...")
     model.fl_recompile(batch_size)
     model.fl_degraded = True
-    if count_time:
-        # count_time=False identifica lo smoke test, che avviene PRIMA di
-        # qualunque inferenza reale: li' il degrado lascia il run uniforme e
-        # pienamente utilizzabile, quindi non va segnalato come tale.
+    if count_time and getattr(model, "fl_has_produced_output", False):
         model.fl_degraded_after_inference = True
 
 
@@ -436,11 +449,18 @@ def forecast_batch_with_fallback(model, inputs, horizon, count_time=True):
     print(f"  Fallback a forecast per singola serie ({len(inputs)} serie)...")
 
     for i, series in enumerate(inputs):
+        error = None
         try:
             output = _forecast_once(model, [series], horizon, count_time)
             results[i] = _to_array(output[0])
         except Exception as exc:
-            errors[i] = str(exc)
+            error = str(exc)
+        if error is not None:
+            # Fuori dall'except, per lo stesso motivo del ciclo qui sopra: dentro,
+            # l'eccezione tiene vivo il traceback e con esso i tensori che hanno
+            # esaurito la memoria, e empty_cache() non libererebbe nulla — proprio
+            # mentre stiamo per chiedere al modello la serie successiva.
+            errors[i] = error
             _free_cuda_memory()
 
     if errors and last_error is not None:

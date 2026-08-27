@@ -14,6 +14,7 @@ import pytest
 
 from forecast_lib import versioning
 from forecast_lib.versioning import (
+    _is_release_tag,
     _parse_ls_remote_tags,
     _parse_version,
     check_library_version,
@@ -161,6 +162,34 @@ def test_latest_tag_ignores_non_version_tags(monkeypatch):
     assert latest_timesfm_tag("https://example.invalid/repo.git") == "v1.0.0"
 
 
+def test_release_tag_recognises_plain_versions():
+    assert _is_release_tag("v2.0.2") is True
+    assert _is_release_tag("2.0.2") is True
+    assert _is_release_tag("v1.2") is True
+    assert _is_release_tag("v3") is True
+
+
+def test_release_tag_rejects_pre_releases_and_labels():
+    assert _is_release_tag("v2.1.0rc1") is False
+    assert _is_release_tag("2.0.2-rc1") is False
+    assert _is_release_tag("v2.0.0-beta") is False
+    assert _is_release_tag("latest") is False
+
+
+def test_latest_tag_ignores_pre_release_tags(monkeypatch):
+    """`_parse_version` leggerebbe 'v2.1.0rc1' come 2.1.0 e lo proporrebbe come
+    aggiornamento: un release candidate non e' cio' che si consiglia a chi sta
+    per rifare i forecast di produzione."""
+    stdout = (
+        "a\trefs/tags/v2.0.2\n"
+        "b\trefs/tags/v2.1.0rc1\n"
+        "c\trefs/tags/v2.2.0-beta\n"
+    )
+    monkeypatch.setattr(versioning, "_run_git",
+                        lambda *a, **k: FakeCompleted(0, stdout))
+    assert latest_timesfm_tag("https://example.invalid/repo.git") == "v2.0.2"
+
+
 def test_latest_tag_on_timeout_returns_none(monkeypatch):
     def boom(*a, **k):
         raise subprocess.TimeoutExpired(cmd="git", timeout=5)
@@ -255,6 +284,60 @@ def test_local_repo_status_on_non_git_directory_returns_none(tmp_path):
 
 def test_local_repo_status_on_missing_directory_returns_none(tmp_path):
     assert local_repo_status(str(tmp_path / "assente"), "https://x.invalid/r.git") is None
+
+
+def test_local_repo_status_survives_a_fetch_timeout(tmp_path, monkeypatch):
+    """Cinque secondi di budget per un fetch HTTPS si superano facilmente. Se il
+    timeout diventasse `None`, il chiamante lo riporterebbe all'utente come
+    "non e' un repository git" su un clone perfettamente valido."""
+    (tmp_path / ".git").mkdir()
+    remote = "https://example.invalid/repo.git"
+
+    def fake_run_git(args, **kwargs):
+        if args[0] == "fetch":
+            raise subprocess.TimeoutExpired(cmd="git fetch", timeout=5)
+        if args[:2] == ["remote", "get-url"]:
+            return FakeCompleted(0, remote + "\n")
+        if args[0] == "rev-parse":
+            return FakeCompleted(0, "main\n")
+        if args[0] == "status":
+            return FakeCompleted(0, "")
+        return FakeCompleted(0, "")
+
+    monkeypatch.setattr(versioning, "_run_git", fake_run_git)
+
+    status = local_repo_status(str(tmp_path), remote)
+
+    assert status is not None                 # NON e' "non e' un repository git"
+    assert status["branch"] == "main"
+    assert status["dirty"] is False
+    assert status["remote_matches"] is True
+    assert status["ahead"] is None            # semplicemente non calcolabili
+    assert status["behind"] is None
+
+
+def test_check_project_updates_does_not_claim_zip_install_on_a_fetch_timeout(
+        tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    remote = "https://example.invalid/repo.git"
+
+    def fake_run_git(args, **kwargs):
+        if args[0] == "fetch":
+            raise subprocess.TimeoutExpired(cmd="git fetch", timeout=5)
+        if args[:2] == ["remote", "get-url"]:
+            return FakeCompleted(0, remote + "\n")
+        if args[0] == "rev-parse":
+            return FakeCompleted(0, "main\n")
+        return FakeCompleted(0, "")
+
+    monkeypatch.setattr(versioning, "_run_git", fake_run_git)
+    monkeypatch.setattr(versioning, "latest_lib_version", lambda *a, **k: None)
+
+    msgs = check_project_updates(
+        colab=False, enabled=True, repo_path=str(tmp_path), repo_url=remote,
+        lib_version="1.6.0", expected_lib_version="1.6.0",
+    )
+    assert not any("non e' un repository git" in m for m in msgs)
 
 
 # ----------------------------------------------------------------------

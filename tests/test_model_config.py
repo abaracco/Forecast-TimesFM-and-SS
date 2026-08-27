@@ -348,8 +348,9 @@ def test_oom_degrades_along_the_derived_scale(env):
     for i, series in enumerate(inputs):
         np.testing.assert_allclose(results[i], series_forecast(series, 6))
     assert model.fl_degraded is True
-    assert model.fl_degraded_after_inference is True
     assert model.fl_batch_size == 1
+    # nessuna inferenza era ancora andata a buon fine: il run e' tutto a batch 1
+    assert model.fl_degraded_after_inference is False
 
 
 def test_oom_stops_at_the_first_level_that_works(env):
@@ -406,7 +407,7 @@ def test_non_oom_failure_degrades_to_batch_1_before_the_per_input_loop(env):
         np.testing.assert_allclose(results[i], series_forecast(series, 6))
     assert model.fl_batch_size == 1
     assert model.fl_degraded is True
-    assert model.fl_degraded_after_inference is True
+    assert model.fl_degraded_after_inference is False
 
 
 def test_non_oom_failure_does_not_walk_the_oom_scale(env):
@@ -443,6 +444,63 @@ def test_per_input_failures_are_reported_by_index(env):
     assert results[1] is None
     np.testing.assert_allclose(results[0], series_forecast(inputs[0], 6))
     np.testing.assert_allclose(results[2], series_forecast(inputs[2], 6))
+
+
+def test_a_degrade_before_any_output_leaves_the_run_deliverable(env):
+    """Se l'OOM scatta al primo tentativo della prima chiamata reale, nulla e'
+    ancora stato calcolato al batch alto: il run gira uniformemente al batch
+    degradato ed e' consegnabile. Segnalarlo costringerebbe a rifarlo per niente."""
+    model = env.setup(batch_size=32)
+
+    def oom_above_8(m, horizon, inputs):
+        if m.global_batch_size > 8:
+            raise env.torch.cuda.OutOfMemoryError("CUDA out of memory (fake)")
+
+    model.behavior = oom_above_8
+    forecast_batch_with_fallback(model, _series(3), 6)
+
+    assert model.fl_degraded is True
+    assert model.fl_batch_size == 8
+    assert model.fl_degraded_after_inference is False
+
+
+def test_a_degrade_after_real_output_makes_the_run_undeliverable(env):
+    """Qui invece parte dei risultati e' gia' stata calcolata a batch 32 e il
+    resto lo sara' a 8: il run NON e' consegnabile."""
+    model = env.setup(batch_size=32)
+    forecast_batch_with_fallback(model, _series(3), 6)      # riuscita, a 32
+    assert model.fl_degraded_after_inference is False
+
+    def oom_above_8(m, horizon, inputs):
+        if m.global_batch_size > 8:
+            raise env.torch.cuda.OutOfMemoryError("CUDA out of memory (fake)")
+
+    model.behavior = oom_above_8
+    forecast_batch_with_fallback(model, _series(3), 6)
+
+    assert model.fl_batch_size == 8
+    assert model.fl_degraded_after_inference is True
+
+
+def test_a_failed_series_still_frees_cuda_memory(env):
+    """Nel loop per-input la memoria va liberata fra una serie e la successiva,
+    altrimenti un OOM su una serie rende molto piu' probabile quello dopo."""
+    model = env.setup(batch_size=32)
+    env.torch.cuda.is_available = lambda: True
+    freed_before = env.torch.fl_calls["empty_cache"]
+
+    def fail_batch_and_second_series(m, horizon, ins):
+        if len(ins) > 1:
+            raise ValueError("errore non-OOM")
+        if float(np.sum(ins[0])) == 65.0:
+            raise env.torch.cuda.OutOfMemoryError("CUDA out of memory (fake)")
+
+    model.behavior = fail_batch_and_second_series
+    results, errors = forecast_batch_with_fallback(model, _series(3), 6)
+
+    assert set(errors) == {1}
+    assert results[0] is not None and results[2] is not None
+    assert env.torch.fl_calls["empty_cache"] > freed_before
 
 
 def test_degradation_is_permanent_within_the_run(env):
