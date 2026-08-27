@@ -545,10 +545,10 @@ In tutti i casi degradati: **`None` + avviso, mai eccezione** — unica eccezion
 
 ### Fase 4 — Test automatici *(~7 h)*
 
-- [ ] `pytest.ini`: `markers = slow: richiede rete o il download del modello TimesFM` e
+- [x] `pytest.ini`: `markers = slow: richiede rete o il download del modello TimesFM` e
       `addopts = -m "not slow"`. *(Verificato con pytest 9.1.1: `-m slow` da riga di comando
       sovrascrive l'ini. `pytest.ini` oggi non ha `addopts`, nessun conflitto.)*
-- [ ] Scrivere `tests/test_versioning.py`, `tests/test_versioning_integration.py`,
+- [x] Scrivere `tests/test_versioning.py`, `tests/test_versioning_integration.py`,
       `tests/test_model_config.py`, `tests/test_model_integration.py`,
       `tests/tools/compare_forecast_outputs.py`, e i casi su `save_excel` in `tests/test_export.py`.
 
@@ -866,28 +866,28 @@ Dopo l'implementazione si ripete la stessa run con `INFERENCE_BATCH_SIZE = 32` (
 (`np.random.RandomState(0)`): corte (6 punti = `MIN_HISTORY_POINTS`), con zeri interni,
 costanti, con trend forte, con outlier.
 
-- [ ] **T1.a** `np.allclose(pf_bs1, pf_bsN, rtol=1e-4, atol=1e-3)`.
-- [ ] **T1.b** dopo `round_to_pack(v, pack=1, mode="nearest", decimals=3)` — l'arrotondamento
+- [x] **T1.a** `np.allclose(pf_bs1, pf_bsN, rtol=1e-4, atol=1e-3)`.
+- [x] **T1.b** dopo `round_to_pack(v, pack=1, mode="nearest", decimals=3)` — l'arrotondamento
       più fine, quindi il criterio più severo — risultati identici.
-- [ ] **T1.c** padding: numero di serie **non multiplo** del batch (65 con batch 32),
+- [x] **T1.c** padding: numero di serie **non multiplo** del batch (65 con batch 32),
       `len(out) == 65`.
-- [ ] **T1.d** il padding non contamina: con 33 serie e batch 32, verificare le righe
+- [x] **T1.d** il padding non contamina: con 33 serie e batch 32, verificare le righe
       **dell'ultimo chunk** (32-63 nell'indicizzazione interna, cioè la 33ª serie), non le
       prime 32 — quelle sono un batch pieno e coinciderebbero banalmente.
-- [ ] **T1.e** n < batch: 5 serie con batch 32 → 5 righe corrette.
-- [ ] **T1.f** nessuna mutazione: la lista passata all'helper ha la stessa lunghezza prima e
+- [x] **T1.e** n < batch: 5 serie con batch 32 → 5 righe corrette.
+- [x] **T1.f** nessuna mutazione: la lista passata all'helper ha la stessa lunghezza prima e
       dopo. *(È questo, più di T1.c, il test che protegge dal difetto di § 1.3a.)*
 
 ### T2 — Versioning, logica pura *(automatico, veloce, mock)*
 
-- [ ] `compare_versions`: `2.0.10 > 2.0.9`; `v2.0.2 == 2.0.2`; `2.1.0 > 2.0.2`;
+- [x] `compare_versions`: `2.0.10 > 2.0.9`; `v2.0.2 == 2.0.2`; `2.1.0 > 2.0.2`;
       **segmenti di lunghezza diversa** (`v1.2 < 1.6.0`, `1.5.1 < 1.6.0`); malformato → non solleva.
-- [ ] Parsing di `ls-remote --tags`: **deduplica `^{}`**, tag misti, output vuoto.
-- [ ] `timesfm_tag("2.0.2") == "v2.0.2"`.
-- [ ] `latest_timesfm_tag` / `latest_lib_version`: timeout, errore git, output vuoto → `None`.
-- [ ] `check_library_version`: uguale → `None`; **`actual < expected` e `actual > expected`
+- [x] Parsing di `ls-remote --tags`: **deduplica `^{}`**, tag misti, output vuoto.
+- [x] `timesfm_tag("2.0.2") == "v2.0.2"`.
+- [x] `latest_timesfm_tag` / `latest_lib_version`: timeout, errore git, output vuoto → `None`.
+- [x] `check_library_version`: uguale → `None`; **`actual < expected` e `actual > expected`
       producono messaggi diversi e corretti**.
-- [ ] `check_project_updates` / `check_timesfm_update`: con `enabled=False` i mock di rete
+- [x] `check_project_updates` / `check_timesfm_update`: con `enabled=False` i mock di rete
       registrano **zero invocazioni**; con `colab=True` `local_repo_status` non viene chiamata
       ma `latest_lib_version` e `check_timesfm_update` sì.
 
@@ -896,44 +896,44 @@ costanti, con trend forte, con outlier.
 Serve perché T2 mocka `subprocess`: non avrebbe mai potuto scoprire il problema LFS.
 
 `ensure_timesfm_checkout` (clone reale):
-- [ ] clone da zero al tag → `HEAD` corretto **e** `status --porcelain` vuoto, verificato su
+- [x] clone da zero al tag → `HEAD` corretto **e** `status --porcelain` vuoto, verificato su
       `status` ripetuti e dopo un `touch` (il caso stat-cache di § Fase 0 rende un singolo
       controllo inaffidabile);
-- [ ] seconda chiamata su cartella già corretta → nessun comando di rete, tree pulito;
-- [ ] cartella su tag diverso (`v2.0.1`) → dopo la chiamata `HEAD` corretto e tree pulito;
-- [ ] cartella con **remote diverso** → **solleva, e la cartella esiste ancora**;
-- [ ] cartella non-git → errore esplicito;
-- [ ] cartella con tree sporco artificialmente → riclonata, tree pulito *(esercita il `rmtree`
+- [x] seconda chiamata su cartella già corretta → nessun comando di rete, tree pulito;
+- [x] cartella su tag diverso (`v2.0.1`) → dopo la chiamata `HEAD` corretto e tree pulito;
+- [x] cartella con **remote diverso** → **solleva, e la cartella esiste ancora**;
+- [x] cartella non-git → errore esplicito;
+- [x] cartella con tree sporco artificialmente → riclonata, tree pulito *(esercita il `rmtree`
       con handler read-only su Windows)*;
-- [ ] **clone fallito (URL inesistente) su cartella già presente → la cartella è ancora lì**
+- [x] **clone fallito (URL inesistente) su cartella già presente → la cartella è ancora lì**
       (verifica dello swap da temp);
-- [ ] tag inesistente → solleva con `strict=True`; con `strict=False` → avviso e
+- [x] tag inesistente → solleva con `strict=True`; con `strict=False` → avviso e
       `pin_verified=False`.
 
 `local_repo_status` e `latest_lib_version` (repo git locali temporanei, **offline**):
-- [ ] `git init` di un finto "remoto", clone, commit sul remoto → `behind`; commit locale →
+- [x] `git init` di un finto "remoto", clone, commit sul remoto → `behind`; commit locale →
       `ahead`; file modificato → `dirty`; `checkout HEAD~1` → detached; branch senza upstream;
       **remote diverso → nessun `fetch`**; cartella non-git → `None`.
-- [ ] `latest_lib_version` contro un repo locale con tag misti annotati/leggeri e a segmenti variabili.
+- [x] `latest_lib_version` contro un repo locale con tag misti annotati/leggeri e a segmenti variabili.
 
 Sequenza di allineamento del branch (§ 2.3), su cloni locali:
-- [ ] clone `--depth 1` di un finto remote, poi passaggio a un secondo branch con la sequenza a
+- [x] clone `--depth 1` di un finto remote, poi passaggio a un secondo branch con la sequenza a
       4 comandi → il branch è quello richiesto e il contenuto è aggiornato;
-- [ ] rieseguire la sequenza **non duplica** la refspec e non fallisce;
-- [ ] dopo la sequenza, `git pull` funziona (upstream impostato).
+- [x] rieseguire la sequenza **non duplica** la refspec e non fallisce;
+- [x] dopo la sequenza, `git pull` funziona (upstream impostato).
 
 ### T3 — Configurazione e fallback *(automatico, veloce, mock)*
 
 Mock del modulo TimesFM in `sys.modules`, più `subprocess.run`,
 `spec_from_file_location`/`exec_module`, `importlib.import_module` e l'`import torch` lazy.
 
-- [ ] **Asserzioni sugli argomenti passati al costruttore `ForecastConfig`, non sullo stato
+- [x] **Asserzioni sugli argomenti passati al costruttore `ForecastConfig`, non sullo stato
       del modello**: `compile()` riscrive `max_horizon` da 24 a 128.
-- [ ] `per_core_batch_size` propagato; `revision` propagata a `from_pretrained`.
-- [ ] Non-regressione della configurazione: `normalize_inputs`, `force_flip_invariance`,
+- [x] `per_core_batch_size` propagato; `revision` propagata a `from_pretrained`.
+- [x] Non-regressione della configurazione: `normalize_inputs`, `force_flip_invariance`,
       `infer_is_positive`, `fix_quantile_crossing`, `max_context=512`, `max_horizon=horizon`.
-- [ ] `fl_recompile(1)` produce una config identica all'**originale** salvo `per_core_batch_size`.
-- [ ] **Fallback**:
+- [x] `fl_recompile(1)` produce una config identica all'**originale** salvo `per_core_batch_size`.
+- [x] **Fallback**:
       - OOM alla prima chiamata → degrado lungo `[32, 8, 1]` via `fl_recompile`; righe corrette;
         `fl_degraded = True`;
       - fallimento non-OOM in batch ma successo per singolo input → livello 3, **con degrado a
@@ -942,16 +942,16 @@ Mock del modulo TimesFM in `sys.modules`, più `subprocess.run`,
       - lo smoke test **non** contribuisce a `fl_inference_seconds`;
       - SKU fallito nel backtest → nessun crash, ricade su `q = 0.5`;
       - la lista di input del chiamante non viene mutata.
-- [ ] `run_backtest` espone `q_global` in `df.attrs` e come colonna del CSV; i tre casi in cui
+- [x] `run_backtest` espone `q_global` in `df.attrs` e come colonna del CSV; i tre casi in cui
       non esiste non sollevano.
-- [ ] `save_excel`: `run_info=None` → un foglio; con `run_info` → due fogli, **dati per primo**;
+- [x] `save_excel`: `run_info=None` → un foglio; con `run_info` → due fogli, **dati per primo**;
       leggibile con `pd.read_excel(path)` senza `sheet_name`.
 
 ### T4 — Regressione end-to-end su dati reali *(manuale, bloccante)*
 
 Utility `tests/tools/compare_forecast_outputs.py`: confronta Excel + CSV di backtest + CSV
 errori, calcola i gate di § 9.2 e produce la diagnostica.
-- [ ] **Ignora il foglio "Run info"** nel confronto (contiene data/ora e non esiste nella run A),
+- [x] **Ignora il foglio "Run info"** nel confronto (contiene data/ora e non esiste nella run A),
       ma **ne legge i campi** per il report (KPI, `q_global`, tempi).
 
 **Setup comune**: `./timesfm` su `v2.0.2` in tutti i run, stesso file Motul reale,
@@ -1082,6 +1082,10 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Attributo `fl_batch_size_initial` | **Aggiunto** agli attributi di § 1.2: la scala di degrado `[N, N//4, 1]` e' derivata da `INFERENCE_BATCH_SIZE`, e dopo un degrado permanente `fl_batch_size` non e' piu' quel valore. I livelli gia' superati vengono scartati, cosi' il degrado non risale mai |
 | 2026-08-27 | Come si riconosce lo smoke test in `forecast_batch_with_fallback` | **`count_time=False`**: e' l'unico chiamante che lo passa, e i due requisiti di § 1.3 (escludere il tempo, non alzare `fl_degraded_after_inference`) coincidono esattamente con quel caso. Nessun secondo parametro |
 | 2026-08-27 | Composizione del foglio "Run info" e dei CSV | **In `export.py`** (`build_run_info`, `run_info_to_frame`, `save_audit_csvs`), non nella cella 12: la cella resta di sola orchestrazione e i campi diventano collaudabili con pytest. Il primo foglio conserva il nome `"Sheet1"` che pandas gli da' oggi |
+| 2026-08-27 | Fase 4 | **Chiusa.** `pytest.ini` con marker `slow` e `addopts = -m "not slow"`; `test_versioning.py` (T2), `test_versioning_integration.py` (T2b), `test_model_config.py` (T3), `test_model_integration.py` (T1), casi su `save_excel` in `test_export.py`, `tests/tools/compare_forecast_outputs.py` (gate G1-G5 + diagnostica di § 9.2). **185 test veloci + 35 `slow` verdi.** T1 conferma sul modello reale l'equivalenza batch 1 / batch 32 (`rtol=1e-4`), che e' il presupposto numerico di tutto il piano |
+| 2026-08-27 | Test dell'utility di confronto | **Aggiunto `tests/test_compare_forecast_outputs.py`**, non previsto dall'elenco della Fase 4: i gate G1-G5 sono lo strumento con cui si decide se il refactor e' accettabile, e un'utility che li calcola nel modo sbagliato renderebbe verde un collaudo che non lo e' |
+| 2026-08-27 | Doppio di TimesFM per T3 | **Modulo `tests/_fake_timesfm.py`** eseguito davvero da `spec_from_file_location`, non un mock di `importlib`: cosi' il percorso di import di `setup_timesfm` resta coperto. Il fake **muta la lista di input** come la libreria vera, altrimenti il requisito (a) di § 1.3 non sarebbe verificabile |
+| 2026-08-27 | Portata di T2b | **Un solo clone dal repo TimesFM vero** (canary dei filtri LFS, l'unica cosa che un finto remote non riproduce); tutti gli altri casi girano contro un repo locale creato con `git init`: offline, e i casi degradati (tag inesistente, remote diverso, clone fallito) diventano provocabili a comando |
 | | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
 

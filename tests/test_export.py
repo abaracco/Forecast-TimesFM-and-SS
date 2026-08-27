@@ -125,3 +125,147 @@ def test_build_final_table_fills_missing_safety_stock_with_zero():
 
     b_row = out[out["SKU"] == "B"].iloc[0]
     assert b_row["SafetyStock"] == 0.0
+
+
+# ======================================================================
+# save_excel / build_run_info — foglio "Run info" (Fase 1.6)
+# ======================================================================
+
+import openpyxl
+
+from forecast_lib.export import (
+    DATA_SHEET_NAME,
+    RUN_INFO_SHEET_NAME,
+    build_run_info,
+    run_info_to_frame,
+    save_excel,
+)
+
+
+def _small_frame():
+    return pd.DataFrame({"SKU": ["A", "B"], "f2026_01": [10.0, 20.0]})
+
+
+def test_save_excel_without_run_info_writes_a_single_sheet(tmp_path):
+    path = tmp_path / "out.xlsx"
+    save_excel(_small_frame(), str(path))
+
+    book = openpyxl.load_workbook(path)
+    assert len(book.sheetnames) == 1
+    assert RUN_INFO_SHEET_NAME not in book.sheetnames
+
+
+def test_save_excel_with_run_info_writes_two_sheets_data_first(tmp_path):
+    """Vincolo duro: la tabella dati resta il PRIMO foglio — questo stesso
+    progetto legge l'input con list(all_sheets.keys())[0]."""
+    path = tmp_path / "out.xlsx"
+    save_excel(_small_frame(), str(path), run_info={"Campo di prova": "valore"})
+
+    book = openpyxl.load_workbook(path)
+    assert book.sheetnames == [DATA_SHEET_NAME, RUN_INFO_SHEET_NAME]
+
+
+def test_save_excel_first_sheet_is_readable_without_sheet_name(tmp_path):
+    """`pd.read_excel(path)` senza sheet_name legge il primo foglio: deve
+    restituire i dati, non i metadati del run."""
+    path = tmp_path / "out.xlsx"
+    df = _small_frame()
+    save_excel(df, str(path), run_info={"Campo di prova": "valore"})
+
+    reread = pd.read_excel(path)
+    assert list(reread.columns) == list(df.columns)
+    assert reread["SKU"].tolist() == ["A", "B"]
+
+    # e il consumatore che legge tutti i fogli trova i dati al primo posto
+    all_sheets = pd.read_excel(path, sheet_name=None)
+    assert list(all_sheets.keys())[0] == DATA_SHEET_NAME
+
+
+def test_save_excel_run_info_sheet_contains_the_fields(tmp_path):
+    path = tmp_path / "out.xlsx"
+    save_excel(_small_frame(), str(path),
+               run_info={"forecast_lib": "1.6.0", "INFERENCE_BATCH_SIZE": 32})
+
+    info = pd.read_excel(path, sheet_name=RUN_INFO_SHEET_NAME)
+    assert list(info.columns) == ["Campo", "Valore"]
+    values = dict(zip(info["Campo"], info["Valore"]))
+    assert values["forecast_lib"] == "1.6.0"
+    assert values["INFERENCE_BATCH_SIZE"] == 32
+
+
+def test_run_info_to_frame_renders_booleans_and_none():
+    frame = run_info_to_frame({"Vero": True, "Falso": False, "Vuoto": None,
+                               "Numero": 3.5, "Testo": "x"})
+    values = dict(zip(frame["Campo"], frame["Valore"]))
+    assert values["Vero"] == "si"
+    assert values["Falso"] == "no"
+    assert values["Vuoto"] == ""
+    assert values["Numero"] == 3.5
+    assert values["Testo"] == "x"
+
+
+def test_run_info_to_frame_preserves_field_order():
+    fields = {"primo": 1, "secondo": 2, "terzo": 3}
+    assert run_info_to_frame(fields)["Campo"].tolist() == list(fields)
+
+
+class _FakeModel:
+    """Solo gli attributi `fl_*` che build_run_info legge dal modello."""
+    fl_timesfm_tag = "v2.0.2"
+    fl_pin_verified = False
+    fl_model_revision = "1d95242"
+    fl_device = "cuda (RTX 2070 SUPER)"
+    fl_batch_size = 8
+    fl_degraded = True
+    fl_degraded_after_inference = True
+    fl_inference_seconds = 12.5
+    global_batch_size = 8
+
+
+def test_build_run_info_reads_the_run_state_from_the_model():
+    info = build_run_info(
+        model=_FakeModel(),
+        timestamp="2026-08-27 10:00:00",
+        lib_version="1.6.0",
+        timesfm_version="2.0.2",
+        model_id="google/timesfm-2.5-200m-pytorch",
+        inference_batch_size=32,
+        q_global=0.57,
+        kpi_motul=0.6978,
+    )
+    assert info["Pin TimesFM verificato"] is False
+    assert info["TimesFM (tag pinnato)"] == "v2.0.2"
+    assert info["Revision pesi"] == "1d95242"
+    assert info["Device"] == "cuda (RTX 2070 SUPER)"
+    assert info["INFERENCE_BATCH_SIZE"] == 32
+    assert info["Batch size effettivo"] == 8
+    assert info["Degrado dopo inferenza reale"] is True
+    assert info["Tempo di inferenza (s)"] == 12.5
+    assert info["q globale (mediana shrinkage)"] == 0.57
+    assert info["KPI Motul pesato"] == 0.6978
+
+
+def test_build_run_info_without_a_model_leaves_the_fields_empty():
+    """`RUN_BACKTEST = False` e i test chiamano build_run_info senza modello:
+    non deve sollevare, e i campi del modello restano vuoti."""
+    info = build_run_info(model=None, timestamp="2026-08-27 10:00:00",
+                          timesfm_version="2.0.2")
+    assert info["Pin TimesFM verificato"] is None
+    assert info["Device"] is None
+    # il fallback su timesfm_version copre il caso "modello non caricato"
+    assert info["TimesFM (tag pinnato)"] == "2.0.2"
+
+
+def test_build_run_info_is_writable_as_a_sheet(tmp_path):
+    """Il dict deve attraversare run_info_to_frame senza tipi non scrivibili."""
+    info = build_run_info(model=_FakeModel(), timestamp="2026-08-27 10:00:00",
+                          lib_version="1.6.0", run_backtest=True,
+                          n_backtest_skus=540, n_skus_zero_accuracy=31)
+    path = tmp_path / "out.xlsx"
+    save_excel(_small_frame(), str(path), run_info=info)
+
+    sheet = pd.read_excel(path, sheet_name=RUN_INFO_SHEET_NAME)
+    assert len(sheet) == len(info)
+    values = dict(zip(sheet["Campo"], sheet["Valore"]))
+    assert values["RUN_BACKTEST"] == "si"
+    assert values["SKU con risultato di backtest"] == 540
