@@ -1006,20 +1006,32 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
 4. eseguire le run D ed E;
 5. merge su `main` **dopo** T5, `REPO_BRANCH` riportato a `"main"`.
 
-- [ ] **T5 va eseguito su runtime GPU.** Su CPU il gate di performance non si applica (come in
-      T4.2) e il collaudo non verifica il requisito dove conta.
-- [ ] Run D vs Run E: **G2, G3, G4, G5** + diagnostica. *(Confronto stesso-device: fra GPU
-      Colab e macchina locale le differenze float sono maggiori di quelle bs1/bs32 misurate,
-      quindi un confronto cross-ambiente fallirebbe senza che nulla sia rotto.)*
-- [ ] Esecuzione completa top-to-bottom senza errori; versione TimesFM caricata = `v2.0.2`,
-      `fl_pin_verified = True`, revision pesi = quella pinnata (dal foglio "Run info").
-- [ ] **Performance**: `fl_inference_seconds` di E ≥ 5x più veloce di D.
-- [ ] Gli avvisi di aggiornamento funzionano in Colab (`check_timesfm_update` e
-      `latest_lib_version` girano; `local_repo_status` no).
-- [ ] Upload e download funzionano, **inclusi i due CSV di audit**; foglio "Run info" presente
-      e corretto; la tabella dati è il primo foglio.
+**Eseguito il 2026-08-27 su Tesla T4**, dal branch `feat/timesfm-2.0.2`.
+
+- [x] **T5 va eseguito su runtime GPU.** Fatto: `Device = cuda (Tesla T4)` in entrambe le run.
+- [x] Run D vs Run E: **G2, G3, G4, G5 tutti PASS**. Volume 26.623.125,5 identico al decimale,
+      Sigma|Delta| = 0,0, **0 SKU** con `BestQuantile` diverso su 540. Stesso esito di T4.2 in
+      locale. Report in `output/_report_T5.md`.
+- [x] Esecuzione completa top-to-bottom senza errori; `TimesFM (tag pinnato) = v2.0.2`,
+      `Pin TimesFM verificato = si`, revision pesi = `1d952420…`, `forecast_lib = 1.6.0`.
+      **Quest'ultimo e' la prova che la sequenza di allineamento del branch ha funzionato**:
+      su `main` la libreria e' ancora 1.5.1, quindi un clone sbagliato si sarebbe visto qui.
+- [x] **Performance**: 195,03 s -> 13,04 s = **15,0x**, contro un gate di >=5x. Totale run
+      4m 18,1s -> 54,2 s. Cella 7: 137,0 -> 17,8 s; cella 8: 67,6 -> 5,2 s.
+- [x] Gli avvisi di aggiornamento funzionano in Colab: la cella 1 gira senza errori e la 6
+      verifica il pin. `ensure_timesfm_checkout` clona correttamente **in un ambiente con
+      git-lfs installato**, che e' il caso che aveva demolito la v3 del piano.
+- [x] Upload e download funzionano, **inclusi i due CSV di audit** (arrivati tutti e sei);
+      foglio "Run info" presente e corretto; la tabella dati e' il primo foglio (`Sheet1`).
 - [ ] **Dopo il merge**: uno smoke run finale in Colab da `main` con `REPO_BRANCH = "main"`
       — configurazione che nessun run precedente ha mai eseguito.
+
+> **Verifica extra, non richiesta dal piano.** Run B (locale, RTX 2070 SUPER) e run D (Colab,
+> Tesla T4), entrambe a batch 1, danno un output **bit-identico**: 0 celle diverse su 13.704,
+> stesso volume al decimale, 0 flip di `BestQuantile` su 540 SKU. Il § 10 aveva escluso il
+> confronto cross-ambiente dai gate temendo differenze float fra GPU diverse maggiori di
+> quelle bs1/bs32 — una cautela che si e' rivelata non necessaria, ma che restava giusta come
+> criterio: escludere un confronto che *poteva* fallire senza che nulla fosse rotto.
 
 ---
 
@@ -1033,12 +1045,14 @@ con il notebook nuovo (`TypeError` sul kwarg `batch_size`). Quindi:
 - [x] **T4.1 verde (G1 bit-identico)** — precondizione per valutare T4.2. *(2026-08-27)*
 - [x] T4.2 eseguito, G2-G5 rispettati, report scritto con la diagnostica di § 9.2. *(2026-08-27)*
 - [x] T4b eseguito, G2-G4 rispettati. *(2026-08-27)*
-- [ ] T5 eseguito su Colab (runtime GPU) da branch di lavoro, tutti i criteri soddisfatti;
-      smoke run finale da `main` dopo il merge.
+- [x] T5 eseguito su Colab (runtime GPU) da branch di lavoro, tutti i criteri soddisfatti
+      *(2026-08-27, Tesla T4, 15,0x)*; **manca solo lo smoke run finale da `main` dopo il merge.**
 - [x] **Code review dell'intero diff**: aderenza al piano, gestione errori, e verifica che
       `metrics.py`, `calibration.py`, `inventory.py`, `rounding.py`, `preprocessing.py`
       risultino **non toccati**.
-- [ ] **Le correzioni applicate dopo la code review impongono di rieseguire `pytest` e T4.1**;
+- [x] **Le correzioni applicate dopo la code review impongono di rieseguire `pytest` e T4.1**;
+      *(soddisfatto: `pytest` rilanciato in coda alla code review, e tutti e sette i run del
+      collaudo — A, B, C, B', C', D, E — girano sul codice di `cb0c5e1`, cioe' post-correzioni.)*
       se toccano il percorso di inferenza, anche **T4.2**; se toccano export, download o il
       percorso Colab, anche **T5** — o almeno lo smoke run finale da `main`, che è già in
       questa lista. Senza questa regola si finirebbe con correzioni mai passate da alcun
@@ -1116,7 +1130,7 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Degrado permanente su errore non-OOM (rilievo 2) | **NON applicato: decisione dell'utente.** Un fallimento non-OOM (es. una serie malformata) fa scendere a batch 1 per tutto il resto del run, ~40x piu' lento, mentre il batch size non c'entra con la causa. Correggerlo significherebbe pero' ripristinare il batch dopo il loop per-input, cioe' contraddire la scelta esplicita di § 1.3(c) e del registro ("degrado permanente per il run"). Il rilievo 1, corretto, toglie meta' del danno: se il fallimento e' sulla prima chiamata il run non viene piu' dichiarato non consegnabile |
 | 2026-08-27 | Difetti dell'utility di confronto trovati provandola su file veri | **Corretti tre.** CSV errori vuoto -> `EmptyDataError` (ed e' il caso normale: quasi nessun run ha SKU falliti); `Δ` nel report -> `UnicodeEncodeError` su console Windows cp1252, dopo aver fatto tutto il lavoro; colonne testuali (`ABC`, `XYZ`) dichiarate diverse con "0 differenze mostrate" perche' `pd.to_numeric` le riduceva a NaN. Il confronto e' ora anche indifferente al dtype (`DataFrame.equals` confronta i dtype: `int64` contro `float64` con gli stessi valori era un falso allarme garantito), restando esatto sui float |
 | 2026-08-27 | Esito di T4.1 / T4.2 / T4b | **Tutti verdi.** T4.1: G1 bit-identico. T4.2: G2-G5 con scostamento aggregato esattamente 0. T4b: una sola cella su 13.704 diversa (un pack su SKU 105880), come previsto da § 9.1. Performance 30,7x contro un gate di 5x |
-| | Esito di T5 | *da compilare* |
+| 2026-08-27 | Esito di T5 | **Verde.** G2-G5 su Colab con scostamento aggregato 0, pin verificato con git-lfs presente, performance 15,0x. Bonus: locale e Colab a batch 1 danno output bit-identico |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | **Non attivato**: nessun gate mancato |
 
 ---
