@@ -1,4 +1,4 @@
-# 📦 Forecast TimesFM and SS 1.5.1
+# 📦 Forecast TimesFM and SS 1.6.0
 
 > **Previsione della domanda e pianificazione delle scorte di sicurezza** — powered by Google TimesFM-2.5-200M
 
@@ -36,11 +36,12 @@ Mappa modulo → file:
 | **C** | Serie storiche & metrica | `preprocessing.py` + `metrics.py` | Costruzione dataset di backtest; metrica di accuratezza Motul (`accuracy_single_month`, `accuracy_weighted`) |
 | **D** | Calibrazione stagionale | `calibration.py` | Theil-Sen log-lineare e fattori di calibrazione per-SKU + globali |
 | **E** | Arrotondamento | `rounding.py` | `round_to_pack` (`"up"` / `"down"` / `"nearest"`) |
-| **F** | Modello TimesFM | `model.py` | `setup_timesfm` (loader manuale) + `forecast_all_skus_point` (batch con fallback per-SKU) |
+| **F** | Modello TimesFM | `model.py` | `setup_timesfm` (loader esplicito: checkout TimesFM pinnato e verificato, pesi alla revision pinnata, batch size di inferenza, smoke test bloccante) + `forecast_batch_with_fallback` (punto unico di ingresso all'inferenza, con degrado automatico) + `forecast_all_skus_point` |
 | **G** | Backtest | `backtest.py` | `run_backtest`: rolling-origin grid search + shrinkage, senza data leakage. Disattivabile via `RUN_BACKTEST` |
 | **H** | Forecast futuro | *(notebook + helpers da altri moduli)* | Pipeline scaling + calibrazione + business adjustment + arrotondamento |
 | **I** | Inventario | `inventory.py` | `calculate_inventory_logic`: ABC (Pareto) + XYZ (CV) + scorta di sicurezza |
-| **J** | Export | `export.py` | `build_forecast_wide`, `build_final_table`, `save_excel` |
+| **J** | Export | `export.py` | `build_forecast_wide`, `build_final_table`, `save_excel` (con foglio "Run info" opzionale), `build_run_info`, `save_audit_csvs` |
+| — | Versioning | `versioning.py` | Fuori dalla numerazione dei moduli: pin del checkout TimesFM (`ensure_timesfm_checkout`) e avvisi di aggiornamento non bloccanti |
 
 > **Perché questa struttura?** Il notebook resta breve e leggibile (orchestrazione + grafici + risultati intermedi visibili). Le funzioni vivono in file Python normali, sono testabili con `pytest`, ricercabili dal tuo IDE, e non si appesantiscono ad ogni esecuzione del notebook. La separazione configurazione/codice rende anche più trasparente cosa è una scelta utente (Modulo A) e cosa è logica di pipeline (`forecast_lib/`).
 
@@ -254,6 +255,20 @@ Il file Excel di output contiene una riga per SKU con:
 
 Il nome del file include automaticamente data e ora (con secondi) di estrazione: `Forecast and SS YYYY MM DD HH_MM_SS.xlsx`.
 
+### Foglio "Run info" e CSV di audit
+
+Con `EXPORT_AUDIT = True` (default) il file Excel contiene un **secondo foglio "Run info"** e vengono scritti **due CSV** accanto all'output. Servono a ricostruire a posteriori come è stato prodotto un file, e a confrontare due run fra loro.
+
+| Artefatto | Contenuto |
+|---|---|
+| Foglio **"Run info"** | Data/ora, versione di `forecast_lib`, tag TimesFM e **esito della verifica del pin**, revision dei pesi risolta, **device** (con il modello di GPU), `INFERENCE_BATCH_SIZE` richiesto e batch size effettivo, flag di degrado, tempo di inferenza, KPI Motul, `q_global`, conteggi degli SKU e i parametri del Modulo A |
+| `... backtest ....csv` | Il risultato per SKU del backtest: `BestQuantile`, `BestQuantileRaw`, `BestAccuracy`, `BestAccuracyRaw`, `TotalWeight` e `q_global` come colonna costante |
+| `... errori ....csv` | Gli SKU per cui il forecast non è stato prodotto, con il messaggio d'errore |
+
+> ⚠️ **La tabella dati resta sempre il PRIMO foglio**, anche quando "Run info" è presente: `pd.read_excel(path)` senza `sheet_name` continua a leggere i dati. Lo stesso vincolo vale per chiunque riusi il file di output come input.
+
+> Il foglio "Run info" viene emesso **anche con `EXPORT_AUDIT = False`** se la verifica del pin di TimesFM è fallita (`TIMESFM_PIN_STRICT = False`): un run non riproducibile deve lasciare traccia dentro il file, non solo nel log di sessione.
+
 ---
 
 ## 🚀 Come Iniziare
@@ -294,7 +309,7 @@ Il notebook supporta **due modalità di esecuzione**, controllate dalla variabil
 4. **Scarica il risultato**
    - Al termine del Modulo J, il file Excel verrà scaricato automaticamente nel browser
 
-> ⏱️ **Tempo tipico di esecuzione**: 10–30 minuti a seconda del numero di SKU e del tipo di runtime (GPU vs CPU).
+> ⏱️ **Tempo tipico di esecuzione**: pochi minuti su GPU. Misura di riferimento in locale (RTX 2070 SUPER, 571 SKU, 2 origini di backtest): **5 m 09 s** con `INFERENCE_BATCH_SIZE = 1`, di cui il ~98% è inferenza. Con il default `32` l'inferenza è molto più rapida. Su CPU i tempi sono sensibilmente più lunghi: lì il collo di bottiglia sono i FLOPs del transformer, non il numero di chiamate, quindi il batch aiuta poco.
 
 ---
 
@@ -304,9 +319,13 @@ Per eseguire il notebook sul proprio PC senza Google Colab, seguire questi passa
 
 1. **Installare Python** — Scaricare Python 3.10 o superiore da [python.org](https://www.python.org/). Su Windows, ricordare di spuntare **"Add Python to PATH"** durante l'installazione.
 
-2. **Scaricare il repository** — Clonare il repo con `git clone <url-repo>` oppure scaricare lo ZIP da GitHub ed estrarlo.
+2. **Installare git** — Serve **anche a chi scarica lo ZIP**: la pipeline clona il codice sorgente di TimesFM da GitHub a ogni avvio e ne verifica il pin di versione, e senza `git` non può farlo. Scaricabile da [git-scm.com](https://git-scm.com/). Verificare con `git --version`.
 
-3. **Creare un ambiente virtuale** *(raccomandato)* — Dalla cartella del progetto, aprire il terminale (o Prompt dei comandi su Windows) e lanciare:
+3. **Scaricare il repository** — Clonare il repo con `git clone <url-repo>` oppure scaricare lo ZIP da GitHub ed estrarlo.
+
+   > Con lo ZIP il progetto non è un repository git: il controllo "sei allineato al remoto?" non può girare e il notebook lo segnala. Resta attivo il confronto fra la versione di `forecast_lib` installata e l'ultima pubblicata su GitHub (`CHECK_FOR_UPDATES`), che è ciò che smaschera uno ZIP invecchiato.
+
+4. **Creare un ambiente virtuale** *(raccomandato)* — Dalla cartella del progetto, aprire il terminale (o Prompt dei comandi su Windows) e lanciare:
    ```bash
    python -m venv Forecast_TimesFM_and_SS
    ```
@@ -314,7 +333,7 @@ Per eseguire il notebook sul proprio PC senza Google Colab, seguire questi passa
    - **Windows**: `Forecast_TimesFM_and_SS\Scripts\activate`
    - **macOS/Linux**: `source Forecast_TimesFM_and_SS/bin/activate`
 
-4. **Installare le dipendenze** — Con l'ambiente attivato, scegliere il file adatto alla propria configurazione:
+5. **Installare le dipendenze** — Con l'ambiente attivato, scegliere il file adatto alla propria configurazione:
 
    | File | Quando usarlo |
    |------|---------------|
@@ -332,9 +351,9 @@ Per eseguire il notebook sul proprio PC senza Google Colab, seguire questi passa
 
    > **Nota CUDA**: il file `requirements-nvidia.txt` è configurato per CUDA 12.4. Se hai una versione diversa di CUDA, apri il file e cambia `cu124` con la tua versione (es. `cu121` per CUDA 12.1, `cu118` per CUDA 11.8). Per verificare la tua versione: `nvidia-smi` da terminale.
 
-5. **Configurare il notebook** — Aprire il notebook, andare nel Modulo A e impostare `COLAB = False`.
+6. **Configurare il notebook** — Aprire il notebook, andare nel Modulo A e impostare `COLAB = False`.
 
-6. **Eseguire** — Lanciare `jupyter notebook` dal terminale, aprire il file `.ipynb` e eseguire tutte le celle in ordine (`Cell → Run All`).
+7. **Eseguire** — Lanciare `jupyter notebook` dal terminale, aprire il file `.ipynb` e eseguire tutte le celle in ordine (`Cell → Run All`).
 
 > **Nota**: la finestra di selezione file (tkinter) funziona con Jupyter Notebook classico. In JupyterLab o VS Code potrebbe non apparire correttamente — in tal caso, assegnare manualmente il percorso del file alla variabile `INPUT_FILE` nella cella B.1.
 
@@ -366,6 +385,38 @@ Queste variabili attivano o disattivano i passaggi matematici della pipeline. Tu
 |-----------|---------|-------------|
 | `COLAB` | `True` | `True` = Google Colab (installa dipendenze automaticamente, upload/download file) · `False` = esecuzione in locale |
 | `ASK_SAVE_PATH` | `False` | Solo in locale: `True` = apre finestra di dialogo per scegliere dove salvare · `False` = salva in `./output/` |
+
+### Modello TimesFM — versioni, pesi, performance
+
+| Parametro | Default | Descrizione |
+|-----------|---------|-------------|
+| `TIMESFM_VERSION` | `"2.0.2"` | Versione di TimesFM da usare, **senza la `v` iniziale**. Il codice sorgente viene clonato da GitHub esattamente a quel tag e il pin viene **verificato** a ogni avvio. Non aggiornarla a mano senza seguire il [runbook](#-runbook-aggiornare-timesfm) |
+| `TIMESFM_REPO_URL` | repo ufficiale | URL del repository TimesFM. Se la cartella `./timesfm` esiste ma punta altrove (un fork, un'altra cartella), il codice **si ferma senza toccarla** |
+| `TIMESFM_PIN_STRICT` | `True` | `True` = un pin non verificabile **blocca** l'esecuzione. `False` = prosegue con un avviso: valvola per il caso "GitHub irraggiungibile e devo girare comunque". Un run non pinnato viene segnalato a fine esecuzione e registrato nel foglio "Run info" |
+| `TIMESFM_MODEL_ID` | `"google/timesfm-2.5-200m-pytorch"` | Modello su HuggingFace |
+| `TIMESFM_MODEL_REVISION` | commit hash | **Revision dei pesi, pinnata di proposito.** Senza pin HuggingFace risolve `main`, e un aggiornamento dei pesi da parte di Google cambierebbe tutti i forecast senza lasciare traccia. Essendo pinnata non si aggiorna da sola: va **rivalutata a ogni cambio di `TIMESFM_VERSION`** |
+| `INFERENCE_BATCH_SIZE` | `32` | Serie inviate insieme al modello a ogni passata, per dispositivo. Il default della libreria TimesFM è `1`, cioè una serie alla volta; alzarlo accelera l'inferenza di circa 40x su GPU. Vedi la nota sul degrado qui sotto |
+| `EXPECTED_FORECAST_LIB_VERSION` | `"1.6.0"` | Versione di `forecast_lib` che questo notebook si aspetta. Se non coincide con `forecast_lib.__version__` il notebook lo dice, con il messaggio giusto nei due versi (codice vecchio / notebook vecchio) |
+| `REPO_BRANCH` | `"main"` | Branch clonato in Colab. Va tenuto su `main` in produzione; si cambia **solo** per collaudare un branch di lavoro |
+| `CHECK_FOR_UPDATES` | `True` | All'avvio verifica se esistono versioni più recenti (TimesFM e `forecast_lib`) e stampa un avviso. **Non aggiorna mai nulla da solo.** Attivo anche in Colab: è lì che un pin rischia di invecchiare inosservato |
+| `EXPORT_AUDIT` | `True` | Emette il foglio "Run info" e i due CSV di audit (vedi [Formato del file di output](#-formato-del-file-di-output)) |
+
+#### Se la memoria della GPU non basta
+
+Se una chiamata al modello esaurisce la memoria, il codice **degrada da solo** il batch size lungo la scala `[N, N//4, 1]` derivata da `INFERENCE_BATCH_SIZE` (con il default: 32 → 8 → 1) e riprova. Se il fallimento non è di memoria, scende direttamente a batch 1 e riprova **una serie alla volta**, così un singolo SKU problematico non fa perdere tutti gli altri. Il degrado è permanente per il resto del run.
+
+Due flag lo registrano, ed è importante distinguerli:
+
+| Flag ("Run info") | Significato |
+|---|---|
+| `Batch degradato durante il run` | Il batch size è stato abbassato in qualche momento |
+| **`Degrado dopo inferenza reale`** | Il degrado è avvenuto **dopo** che parte dei risultati era già stata calcolata a un batch diverso. **Il run NON è consegnabile**: va rifatto con `INFERENCE_BATCH_SIZE` più basso |
+
+La distinzione non è formale: un degrado durante lo smoke test iniziale avviene *prima* di qualunque inferenza reale, quindi il run gira uniformemente al batch più basso ed è pienamente utilizzabile. Un degrado a metà backtest, no. L'avviso compare in fondo all'ultima cella, non solo nel log del Modulo F che nel frattempo è scorso via.
+
+#### Lo smoke test è bloccante
+
+Dopo aver caricato il modello, il Modulo F esegue una previsione di prova **attraverso lo stesso percorso di inferenza della pipeline** e ne verifica la forma e la finitezza. Se fallisce, la cella **solleva** invece di proseguire: un modello che non risponde qui non produrrà nulla di utilizzabile dopo. È un cambio di comportamento rispetto alla v1.5.
 
 ### Parametri numerici
 
@@ -404,14 +455,44 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 | Libreria | Utilizzo |
 |----------|----------|
 | `torch` | Backend PyTorch per TimesFM |
-| `einops` | Operazioni tensoriali (richiesta da TimesFM) |
+| `safetensors` | Formato dei pesi pre-addestrati |
 | `huggingface_hub` | Download pesi pre-addestrati |
 | `pandas` | Manipolazione dati tabulari |
 | `numpy` | Calcoli numerici |
 | `scipy` | Distribuzione normale (z-score per scorta di sicurezza) |
 | `openpyxl` | Lettura/scrittura file Excel |
 
-> Il codice sorgente di TimesFM viene scaricato direttamente da GitHub (non tramite pip) per garantire la compatibilità con Python 3.12 di Colab.
+> Il codice sorgente di TimesFM viene scaricato direttamente da GitHub (non tramite pip) per garantire la compatibilità con Python 3.12 di Colab e per poterlo **pinnare a un tag verificabile**.
+
+> **`git` è una dipendenza a tutti gli effetti**, non solo uno strumento di sviluppo: serve a clonare TimesFM e a verificarne il pin. Vale anche per chi installa scaricando lo ZIP del repository.
+
+> **Uso offline.** Con la revision dei pesi pinnata, HuggingFace riusa la cache locale invece di ricontrollare `main` a ogni avvio: dopo il primo download il modello parte anche senza rete. Il clone di TimesFM è invece **promisor** (`--filter=blob:none`): le operazioni git future che richiedano blob non ancora scaricati hanno bisogno della rete. In pratica, un secondo avvio con `./timesfm` già al tag giusto non tocca la rete, ma una riclonazione sì.
+
+---
+
+## 🔁 Runbook: aggiornare TimesFM
+
+TimesFM è **pinnato a un tag** e i pesi a una **revision**: nessuno dei due si aggiorna da solo. All'avvio il notebook segnala se esiste un tag più recente (`CHECK_FOR_UPDATES`), ma l'aggiornamento è una decisione, e va fatto in quest'ordine.
+
+1. **Cambiare `TIMESFM_VERSION`** nel Modulo A, senza la `v` iniziale (es. `"2.1.0"`).
+
+2. **Rivalutare `TIMESFM_MODEL_REVISION`.** È il passaggio che si dimentica: essendo pinnata, la revision non segue l'aggiornamento del codice, e *codice nuovo con pesi vecchi* è uno scenario reale. Verificare su HuggingFace a quale commit punta `main` per `TIMESFM_MODEL_ID` e decidere consapevolmente se seguirlo o restare dove si è. Se cambia, i forecast cambiano: il confronto del punto 5 diventa obbligatorio.
+
+3. **`pytest`** — la suite veloce (offline, pochi secondi). Deve restare verde.
+
+4. **`pytest -m slow`** — clone git reali ed equivalenza numerica sul modello vero. È qui che si scopre se la nuova versione ha spostato il percorso del modulo PyTorch, rinominato la classe del modello o cambiato la firma di `ForecastConfig`.
+
+5. **Confrontare i numeri con una run di riferimento.** Produrre un output con la versione vecchia e uno con la nuova, sullo stesso file di input e con gli stessi parametri, e confrontarli:
+
+   ```bash
+   python tests/tools/compare_forecast_outputs.py        --baseline "output/<vecchia>.xlsx"    --new "output/<nuova>.xlsx"        --baseline-backtest "output/<vecchia> backtest ....csv"        --new-backtest      "output/<nuova> backtest ....csv"        --mode batch --report confronto.md
+   ```
+
+   L'utility calcola l'impatto aggregato (con e senza segno), verifica che ogni scostamento grande sia spiegato da un cambio dello scaling factor e produce la diagnostica: SKU con `q` diverso, `q_global` prima e dopo, KPI Motul, top-20 per scostamento assoluto **e** relativo, elenco completo degli SKU di classe A/B più colpiti. Un cambio di versione del modello *può* legittimamente spostare i numeri — il punto non è che non si muovano, è **guardarli prima di consegnarli**.
+
+6. **Aggiornare la documentazione**: questo README, `CLAUDE.md` e la tabella delle versioni.
+
+> Se la verifica del pin fallisce (rete giù, cartella `./timesfm` in stato inconsistente), l'esecuzione si ferma con un messaggio esplicito. Per procedere comunque — consapevolmente — impostare `TIMESFM_PIN_STRICT = False`: il run parte, ma viene marcato come non riproducibile nel foglio "Run info" e in un avviso finale.
 
 ---
 
@@ -427,7 +508,13 @@ Su **Google Colab**, le dipendenze vengono installate automaticamente dal Modulo
 - **Aggiustamento di business separato dal modello**: `BUSINESS_ADJUSTMENT_FACTOR` agisce post-modello come moltiplicatore esplicito, mantenendo separata la logica di forecasting (modello) da quella di scenario (decisione manageriale). Questo rende le simulazioni *auditable*: l'effetto è quantificato esattamente e tracciabile, a differenza di tweak indiretti via parametri del modello.
 - **Scorta di sicurezza sempre arrotondata per eccesso**: indipendentemente dal `ROUNDING_MODE` impostato per i forecast, la scorta di sicurezza usa sempre `"up"` per garantire copertura.
 - **Guardia ABC**: se il volume totale nel periodo di lookback è zero, tutti gli SKU vengono classificati come classe C per evitare divisioni per zero.
-- **Inferenza batch con fallback automatico**: il modello tenta prima un forecast batch (tutti gli SKU in una chiamata). Se fallisce (es. per limiti di memoria), ricade automaticamente su forecast singoli per SKU.
+- **Inferenza batch con degrado automatico**: il modello tenta un forecast in batch (tutti gli SKU in una chiamata). Su esaurimento di memoria degrada lungo la scala `[N, N//4, 1]` un livello alla volta, invece di cadere subito a 1 buttando via ~40x quando spesso basta un livello intermedio; su un fallimento di altro tipo scende a batch 1 e prova una serie alla volta. Il degrado è permanente per il run e viene registrato: **non rende però il run coerente**, perché quanto già calcolato resta al batch precedente — per questo un degrado *dopo* l'inizio dell'inferenza marca il run come non consegnabile.
+- **Versione del codice e dei pesi entrambe pinnate, e verificate**: `TIMESFM_VERSION` fissa il tag del sorgente TimesFM, `TIMESFM_MODEL_REVISION` il commit dei pesi su HuggingFace. Senza il primo, un aggiornamento del repository cambierebbe il codice sotto i piedi; senza il secondo, HuggingFace risolverebbe `main` e un nuovo checkpoint cambierebbe **tutti** i forecast senza lasciare traccia. Il pin non è solo dichiarato ma **verificato** a ogni avvio (`HEAD` sul tag e working tree pulito): un pin dichiarato e non verificato dà una falsa sicurezza, che è peggio di nessuna sicurezza.
+- **Clone sparse per via dei filtri LFS**: TimesFM viene clonato con `--filter=blob:none --sparse` e `sparse-checkout set src`. È l'unica variante che lascia il working tree stabilmente pulito — i file soggetti ai filtri LFS del repository semplicemente non esistono nel checkout. Senza, il controllo "working tree pulito" fallirebbe a caso e la verifica del pin diventerebbe inutilizzabile.
+- **Aggiornamento del checkout per clone-e-scambio**: la cartella esistente non viene mai cancellata prima di aver clonato la nuova. Se il clone fallisce — rete giù, cioè esattamente lo scenario per cui esiste `TIMESFM_PIN_STRICT = False` — la cartella vecchia resta al suo posto e utilizzabile. Se il remote non è quello atteso, il codice si ferma senza toccare nulla: `./timesfm` è un percorso relativo alla directory di lavoro, che in JupyterLab o VS Code può non essere la root del progetto.
+- **TimesFM da GitHub e non da `pip`**: il pacchetto pip è stato valutato e scartato. Oltre alla compatibilità con il Python di Colab, l'installazione da pip non offre un modo altrettanto diretto di verificare *quale* codice sta girando: un tag git con `HEAD` confrontabile sì.
+- **Smoke test bloccante**: dopo il caricamento il modello viene interrogato attraverso lo stesso percorso di inferenza della pipeline, e l'output viene controllato (forma e finitezza), non solo l'assenza di eccezioni. Con un batch size maggiore di 1 questa singola serie attiva subito il ramo di padding interno di TimesFM, quindi funziona anche da canary.
+- **Scaling factor sugli SKU ad accuratezza nulla — limite noto**: la formula Motul azzera l'accuratezza quando il forecast è meno della metà o più del doppio dell'attuale. Per gli SKU molto erratici questo può accadere su *tutta* la griglia: in quel caso lo scaling factor scelto non è una decisione del modello ma un artefatto dell'ordine di iterazione della griglia (vince il primo valore, `0.10`). Non sono confinati in classe C — l'accuratezza nulla dipende dall'erraticità (XYZ), non dal volume (ABC), e uno SKU A/Z è il candidato tipico. Il numero di SKU in questa condizione è riportato nel foglio "Run info" (`SKU con accuratezza nulla`); correggere il comportamento è materia di un ciclo di lavoro dedicato.
 
 ---
 
@@ -445,15 +532,24 @@ Forecast_TimesFM_and_SS/
 │   ├── model.py                     # Modulo F (loader TimesFM + forecast batch)
 │   ├── backtest.py                  # Modulo G (grid search rolling-origin)
 │   ├── inventory.py                 # Modulo I (ABC/XYZ + safety stock)
-│   └── export.py                    # Modulo J
-├── tests/                            # test pytest sulle funzioni pure
+│   ├── export.py                    # Modulo J (+ "Run info" e CSV di audit)
+│   └── versioning.py                # pin di TimesFM e avvisi di aggiornamento
+├── tests/                            # suite pytest
 │   ├── conftest.py
+│   ├── _fake_timesfm.py             # doppio di TimesFM per i test veloci
 │   ├── test_metrics.py
 │   ├── test_rounding.py
 │   ├── test_calibration.py
 │   ├── test_preprocessing.py
 │   ├── test_inventory.py
-│   └── test_export.py
+│   ├── test_export.py
+│   ├── test_versioning.py
+│   ├── test_model_config.py         # loader e percorsi degradati (mockati)
+│   ├── test_compare_forecast_outputs.py
+│   ├── test_versioning_integration.py   # slow: repo git reali
+│   ├── test_model_integration.py        # slow: modello TimesFM reale
+│   └── tools/
+│       └── compare_forecast_outputs.py  # confronto fra due run
 ├── pytest.ini
 ├── requirements.txt                 # dipendenze CPU
 ├── requirements-nvidia.txt          # dipendenze GPU NVIDIA
@@ -463,12 +559,18 @@ Forecast_TimesFM_and_SS/
 
 ### Eseguire i test
 
-I test verificano le funzioni pure del package (formula Motul, Theil-Sen, arrotondamenti, ABC/XYZ, ecc.). Sono utili per evitare regressioni durante future modifiche.
+I test sono divisi in due gruppi.
 
 ```bash
 pip install pytest
-pytest
+
+pytest            # suite veloce: offline, pochi secondi
+pytest -m slow    # richiede rete e il modello TimesFM
 ```
+
+La **suite veloce** copre la matematica pura (formula Motul, Theil-Sen, arrotondamenti, ABC/XYZ), la logica di versioning con `subprocess` mockato, il loader del modello contro un doppio di TimesFM — inclusi tutti i percorsi di degrado, che con il modello vero non sarebbero provocabili a comando — e l'utility di confronto fra due run.
+
+I test **`slow`** coprono ciò che un mock non potrebbe mai scoprire: `ensure_timesfm_checkout` contro repository git veri (compreso un clone dal repo TimesFM reale, canary dei filtri LFS) e, sul modello vero, l'equivalenza numerica fra inferenza in batch e inferenza per singola serie — il presupposto su cui si regge tutto il guadagno di performance.
 
 ---
 
@@ -487,6 +589,7 @@ pytest
 | **v1.4.3** | Pulizia ambiente di sviluppo: virtual environment locale rinominato in `.venv` (convenzione standard), `.gitignore` aggiornato (rimossa entry obsoleta, escluso `settings.local.json` e i file di lock di Claude Code), `settings.local.json` rimosso dal tracking git. |
 | **v1.4.4** | Aggiunta `RUN_BACKTEST` per disattivare l'intero Modulo G (utile per simulazioni rapide o baseline non ottimizzata sul MAPE Motul) e `BUSINESS_ADJUSTMENT_FACTOR` come leva manageriale di procurement applicata tra calibrazione e arrotondamento (ortogonale al modello). |
 | **v1.5.0** | **Refactor strutturale**: matematica della pipeline estratta dal notebook nel package `forecast_lib/` (file `.py` per modulo). Notebook ridotto da ~1960 a ~870 righe, con sole celle di configurazione e orchestrazione. Aggiunta `tests/` con suite pytest per le funzioni pure. In Colab il package viene clonato automaticamente da GitHub all'avvio (sempre ultima versione di `main`). |
+| **v1.6.0** | **TimesFM pinnato e inferenza in batch.** Il codice sorgente di TimesFM è clonato a un tag verificato (`TIMESFM_VERSION`) e i pesi a una revision pinnata; un pin non verificabile blocca l'esecuzione salvo deroga esplicita. `INFERENCE_BATCH_SIZE` porta l'inferenza da una serie alla volta a un batch, con degrado automatico su esaurimento di memoria e avviso quando il run non è consegnabile. Aggiunti il foglio "Run info", i due CSV di audit e gli avvisi (non bloccanti) di versione disponibile. Nuovo modulo `versioning.py`, suite di test estesa con un gruppo `slow` e utility di confronto fra due run. |
 | **v1.5.1** | Fix al timer di cella: la cella che registra i callback non è misurabile (il `pre_run_cell` non scatta su di essa) e viene saltata via early-return; risolto il valore spurio osservato su Colab in caso di ri-esecuzione della cella di config. Suffisso del file di output esteso ai secondi (`HH_MM_SS`) per evitare collisioni di nome su run ravvicinati. |
 
 ---

@@ -556,18 +556,18 @@ In tutti i casi degradati: **`None` + avviso, mai eccezione** — unica eccezion
 
 ### Fase 5 — Documentazione *(~1 h 30)*
 
-- [ ] `CLAUDE.md`: "Key Configuration" con tutti i parametri di § 4; "Project Layout" con
+- [x] `CLAUDE.md`: "Key Configuration" con tutti i parametri di § 4; "Project Layout" con
       `versioning.py`; Modulo F aggiornato; nuove "Important Design Decisions": *pin di
       versione e pesi con verifica*, *clone sparse per i filtri LFS*, *degrado su OOM e run
       non consegnabile*, *pip valutato e scartato*, *scelta di `q` sugli SKU ad accuratezza
       nulla* (§ 9.1); travaso del registro decisioni (§ 12).
-- [ ] `README.md` — runbook **"Aggiornare TimesFM"**: cambiare `TIMESFM_VERSION` →
+- [x] `README.md` — runbook **"Aggiornare TimesFM"**: cambiare `TIMESFM_VERSION` →
       **rivalutare `TIMESFM_MODEL_REVISION`** (ora che è pinnata non si aggiorna da sola:
       codice nuovo con pesi vecchi è uno scenario reale) → `pytest` → `pytest -m slow` →
       T4 → confronto → aggiornare la doc.
-- [ ] `README.md` — correggere riga 39 (Modulo F) e riga 407 (togliere `einops`, aggiungere
+- [x] `README.md` — correggere riga 39 (Modulo F) e riga 407 (togliere `einops`, aggiungere
       `safetensors`). *(Riga 414 resta vera: TimesFM da GitHub, non da pip.)*
-- [ ] `README.md` — documentare: `INFERENCE_BATCH_SIZE` e la scala di degrado; i due flag di
+- [x] `README.md` — documentare: `INFERENCE_BATCH_SIZE` e la scala di degrado; i due flag di
       degrado; il foglio "Run info" e i CSV; lo smoke test ora bloccante; che il pin della
       revision HF **migliora** l'uso offline *(nota: il clone TimesFM è invece promisor, quindi
       operazioni git future su blob mancanti richiedono rete)*; che **`git` serve anche a chi
@@ -1086,6 +1086,7 @@ report, non nell'attesa. Le stime qui sotto sono tarate su questo dato.
 | 2026-08-27 | Test dell'utility di confronto | **Aggiunto `tests/test_compare_forecast_outputs.py`**, non previsto dall'elenco della Fase 4: i gate G1-G5 sono lo strumento con cui si decide se il refactor e' accettabile, e un'utility che li calcola nel modo sbagliato renderebbe verde un collaudo che non lo e' |
 | 2026-08-27 | Doppio di TimesFM per T3 | **Modulo `tests/_fake_timesfm.py`** eseguito davvero da `spec_from_file_location`, non un mock di `importlib`: cosi' il percorso di import di `setup_timesfm` resta coperto. Il fake **muta la lista di input** come la libreria vera, altrimenti il requisito (a) di § 1.3 non sarebbe verificabile |
 | 2026-08-27 | Portata di T2b | **Un solo clone dal repo TimesFM vero** (canary dei filtri LFS, l'unica cosa che un finto remote non riproduce); tutti gli altri casi girano contro un repo locale creato con `git init`: offline, e i casi degradati (tag inesistente, remote diverso, clone fallito) diventano provocabili a comando |
+| 2026-08-27 | Fase 5 | **Chiusa.** `README.md`: sezione sui parametri del modello (pin, revision, batch size, avvisi, audit), nota sul degrado e sui due flag, smoke test bloccante, foglio "Run info" e CSV, `git` come dipendenza anche per lo ZIP, nota su offline e repo promisor, runbook "Aggiornare TimesFM", `einops` -> `safetensors`, scelte progettuali, struttura, sezione test con i due gruppi, riga v1.6.0. `CLAUDE.md`: layout con `versioning.py` e `tests/tools/`, Modulo F e J aggiornati, tutti i parametri di § 4 in "Key Configuration", cinque nuove "Important Design Decisions" e travaso del registro di § 12 |
 | | Esito di T4.1 / T4.2 / T4b / T5 | *da compilare* |
 | | Eventuale attivazione di § 9.3 e scelta dell'utente | *da compilare* |
 
