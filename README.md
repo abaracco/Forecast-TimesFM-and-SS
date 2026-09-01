@@ -515,6 +515,10 @@ A questo si aggiungono **202 test automatici** offline e **35** che girano contr
 
 TimesFM è **pinnato a un tag** e i pesi a una **revision**: nessuno dei due si aggiorna da solo. All'avvio il notebook segnala se esiste un tag più recente (`CHECK_FOR_UPDATES`), ma l'aggiornamento è una decisione, e va fatto in quest'ordine.
 
+> **⚠️ TimesFM 3.0 — non aggiornare (verificato il 2026-09-01).** Il tag `v3.0.0` esiste e `CHECK_FOR_UPDATES` lo segnala, ma i pesi di TimesFM 3.0 (`google/timesfm-3.0-pytorch`) escono sotto `timesfm-non-commercial-license-v1.0`: **uso commerciale e in produzione vietati**. Il codice sorgente del repo resta Apache-2.0 e **i pesi fino alla 2.5 inclusa restano Apache-2.0**, quindi questo progetto resta su TimesFM 2.5 — un forecast di domanda che alimenta gli approvvigionamenti è esattamente l'uso che la licenza esclude.
+>
+> Nota tecnica, per non doverla riscoprire: il tag `v3.0.0` contiene ancora il package 2.5 intatto. Il diff `v2.0.2 → v3.0.0` su `src/timesfm/` è di 9 righe, di cui una correzione a `force_flip_invariance` che si attiva **solo** con `max_horizon > 128` — con `HORIZON = 24` quel ramo non viene mai eseguito. Spostare il pin a `"3.0.0"` restando sul modello 2.5 sarebbe quindi numericamente neutro, ma senza alcun beneficio. Il discorso si riapre solo se Google rilascia i pesi 3.0 in Apache-2.0 o rende disponibile una licenza commerciale.
+
 1. **Cambiare `TIMESFM_VERSION`** nel Modulo A, senza la `v` iniziale (es. `"2.1.0"`).
 
 2. **Rivalutare `TIMESFM_MODEL_REVISION`.** È il passaggio che si dimentica: essendo pinnata, la revision non segue l'aggiornamento del codice, e *codice nuovo con pesi vecchi* è uno scenario reale. Verificare su HuggingFace a quale commit punta `main` per `TIMESFM_MODEL_ID` e decidere consapevolmente se seguirlo o restare dove si è. Se cambia, i forecast cambiano: il confronto del punto 5 diventa obbligatorio.
